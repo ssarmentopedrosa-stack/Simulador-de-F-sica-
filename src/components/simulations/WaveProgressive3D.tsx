@@ -133,23 +133,21 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
     grid.position.y = -2.0;
     scene.add(grid);
 
-    // 1. Transverse Rope (Tubular procedural continuous 3D mesh)
-    const ropePoints: THREE.Vector3[] = [];
-    for (let x = -4.5; x <= 4.5; x += 0.15) {
-      ropePoints.push(new THREE.Vector3(x, 0, 0));
+    // 1. Transverse Rope (Dynamic Buffer Line with 90 segments)
+    const numPoints = 90;
+    const ropePositions = new Float32Array(numPoints * 3);
+    for (let i = 0; i < numPoints; i++) {
+      const x = -4.5 + (i / (numPoints - 1)) * 9.0;
+      ropePositions[i * 3] = x;
+      ropePositions[i * 3 + 1] = 0;
+      ropePositions[i * 3 + 2] = 0;
     }
-    const ropeCurve = new THREE.CatmullRomCurve3(ropePoints);
-    ropeCurveRef.current = ropeCurve;
-    const ropeGeo = new THREE.TubeGeometry(ropeCurve, 120, 0.07, 12, false);
-    const ropeMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      metalness: 0.6,
-      roughness: 0.3,
-    });
-    const ropeMesh = new THREE.Mesh(ropeGeo, ropeMat);
-    ropeMesh.castShadow = true;
-    scene.add(ropeMesh);
-    ropeMeshRef.current = ropeMesh;
+    const ropeGeo = new THREE.BufferGeometry();
+    ropeGeo.setAttribute('position', new THREE.BufferAttribute(ropePositions, 3));
+    const ropeMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 4 });
+    const ropeLine = new THREE.Line(ropeGeo, ropeMat);
+    scene.add(ropeLine);
+    ropeMeshRef.current = ropeLine as unknown as THREE.Mesh;
 
     // Tracked point on rope (Glowing sphere marker)
     const trackedSphereGeo = new THREE.SphereGeometry(0.14, 16, 16);
@@ -284,21 +282,20 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
 
       const t = clock.time;
 
-      // 1. Transverse Mode Animation
-      if (ropeMeshRef.current && waveMode === 'transverse') {
+      // 1. Transverse Mode Animation (in-place buffer update, 0 memory churn)
+      if (ropeMeshRef.current && waveMode === 'transverse' && ropeMeshRef.current.geometry) {
         ropeMeshRef.current.visible = true;
         if (particlesGroupRef.current) particlesGroupRef.current.visible = false;
         if (surfaceMeshRef.current) surfaceMeshRef.current.visible = false;
 
-        const points: THREE.Vector3[] = [];
-        for (let x = -4.5; x <= 4.5; x += 0.15) {
+        const posAttr = ropeMeshRef.current.geometry.attributes.position;
+        const count = posAttr.count;
+        for (let i = 0; i < count; i++) {
+          const x = -4.5 + (i / (count - 1)) * 9.0;
           const y = amplitude * Math.sin(kWave * (x + 4.5) - omegaWave * t);
-          points.push(new THREE.Vector3(x, y, 0));
+          posAttr.setXYZ(i, x, y, 0);
         }
-
-        const curve = new THREE.CatmullRomCurve3(points);
-        ropeMeshRef.current.geometry.dispose();
-        ropeMeshRef.current.geometry = new THREE.TubeGeometry(curve, 100, 0.07, 10, false);
+        posAttr.needsUpdate = true;
 
         // Update tracked point
         if (trackedPointSphereRef.current) {

@@ -375,8 +375,9 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
   const quantities: PhysicalQuantity[] = [
     { label: 'Ângulo', symbol: 'θ', value: currentState.thetaDeg, unit: '°', precision: 2, highlight: true },
     { label: 'Vel. Angular', symbol: 'ω', value: currentState.omega, unit: 'rad/s', precision: 2 },
-    { label: 'Período Exato (RK4)', symbol: 'T_exato', value: currentState.periodExact, unit: 's', precision: 3 },
-    { label: 'Período Aprox (Peq. Ângulos)', symbol: 'T_aprox', value: currentState.periodApprox, unit: 's', precision: 3 },
+    { label: 'Período Exato (Integral Elíptica K)', symbol: 'T_exato', value: currentState.periodExact, unit: 's', precision: 3 },
+    { label: 'Período Aprox (Pequenos Ângulos)', symbol: 'T₀', value: currentState.periodApprox, unit: 's', precision: 3 },
+    { label: 'Aprox. de Borda', symbol: 'T_Borda', value: currentState.periodBorda, unit: 's', precision: 3 },
     { label: 'Energia Mecânica', symbol: 'Em', value: currentState.totalEnergy, unit: 'J', precision: 3 },
   ];
 
@@ -389,13 +390,13 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
         <div ref={mountRef} className="flex-1 w-full h-full relative cursor-grab active:cursor-grabbing">
           <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 pointer-events-none">
             <div className="bg-slate-900/85 border border-slate-800 px-3 py-1.5 rounded-md backdrop-blur-md shadow-lg">
-              <span className="text-[11px] font-mono text-cyan-400 font-semibold block">PÊNDULO SIMPLES 3D</span>
-              <span className="text-xs text-slate-300">Integração Não-Linear Exata (Runge-Kutta 4ª Ordem)</span>
+              <span className="text-[11px] font-mono text-cyan-400 font-semibold block">PÊNDULO NÃO-LINEAR 3D</span>
+              <span className="text-xs text-slate-300">Dinâmica RK4 & Período Exato por Integral Elíptica Completa K(m)</span>
             </div>
 
             {theta0Deg > 20 && (
               <div className="bg-amber-950/40 border border-amber-800/60 px-2.5 py-1 rounded text-[11px] text-amber-300 max-w-sm">
-                Desvio não-linear: T_exato é {periodDiscrepancy.toFixed(1)}% maior que a aproximação de pequenos ângulos.
+                Desvio não-linear: T_exato (integral elíptica) é {periodDiscrepancy.toFixed(1)}% maior que a aproximação harmônica simples T₀.
               </div>
             )}
           </div>

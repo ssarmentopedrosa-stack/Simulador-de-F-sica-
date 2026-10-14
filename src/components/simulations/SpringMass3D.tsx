@@ -5,7 +5,7 @@ import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../..
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, HelpCircle, Activity } from 'lucide-react';
+import { Sliders, HelpCircle, Activity, ArrowDownUp, MoveHorizontal } from 'lucide-react';
 
 interface SpringMass3DProps {
   onOpenExperiment?: () => void;
@@ -20,7 +20,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
   const [amplitude, setAmplitude] = useState<number>(1.2);
   const [dampingCoeff, setDampingCoeff] = useState<number>(0.0);
   const [isVertical, setIsVertical] = useState<boolean>(false);
-  const [gravity, setGravity] = useState<number>(9.8);
+  const [gravity] = useState<number>(9.8);
   const [externalForceAmp, setExternalForceAmp] = useState<number>(0);
   const [externalFreq, setExternalFreq] = useState<number>(0.8);
 
@@ -50,7 +50,9 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
   const blockGroupRef = useRef<THREE.Group | null>(null);
   const springMeshRef = useRef<THREE.Line | null>(null);
   const springGeometryRef = useRef<THREE.BufferGeometry | null>(null);
+  const rigGroupRef = useRef<THREE.Group | null>(null);
   const forceArrowRef = useRef<THREE.ArrowHelper | null>(null);
+  const weightArrowRef = useRef<THREE.ArrowHelper | null>(null);
   const velArrowRef = useRef<THREE.ArrowHelper | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const cameraAngleRef = useRef<{ theta: number; phi: number; radius: number }>({
@@ -94,32 +96,39 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     });
   }, [clock.time, mass, springK, amplitude, dampingCoeff, isVertical, gravity, externalForceAmp, externalFreq]);
 
-  // Helper to build procedural helical spring points
+  // Universal 3D vector-based procedural helical spring points generator
   const generateSpringPoints = useCallback(
-    (startX: number, endX: number, coils: number = 16, radius: number = 0.22, pointsPerCoil: number = 24) => {
+    (start: THREE.Vector3, end: THREE.Vector3, coils: number = 16, radius: number = 0.22, pointsPerCoil: number = 24) => {
       const points: THREE.Vector3[] = [];
-      const totalPoints = coils * pointsPerCoil;
-      const length = endX - startX;
+      const dir = new THREE.Vector3().subVectors(end, start);
+      const length = Math.max(0.1, dir.length());
+      const unitDir = dir.clone().normalize();
+
+      const up = Math.abs(unitDir.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      const perp1 = new THREE.Vector3().crossVectors(unitDir, up).normalize();
+      const perp2 = new THREE.Vector3().crossVectors(unitDir, perp1).normalize();
 
       // Straight entry anchor
-      points.push(new THREE.Vector3(startX, 0, 0));
-      points.push(new THREE.Vector3(startX + length * 0.05, 0, 0));
+      points.push(start.clone());
+      points.push(start.clone().addScaledVector(unitDir, length * 0.05));
 
-      const activeStart = startX + length * 0.05;
+      const activeStartDist = length * 0.05;
       const activeLength = length * 0.9;
+      const totalPoints = coils * pointsPerCoil;
 
       for (let i = 0; i <= totalPoints; i++) {
         const u = i / totalPoints;
         const angle = u * coils * Math.PI * 2;
-        const x = activeStart + u * activeLength;
-        const y = radius * Math.cos(angle);
-        const z = radius * Math.sin(angle);
-        points.push(new THREE.Vector3(x, y, z));
+        const axial = start.clone().addScaledVector(unitDir, activeStartDist + u * activeLength);
+        const radOffset = perp1.clone().multiplyScalar(radius * Math.cos(angle)).add(
+          perp2.clone().multiplyScalar(radius * Math.sin(angle))
+        );
+        points.push(axial.add(radOffset));
       }
 
       // Straight exit anchor
-      points.push(new THREE.Vector3(endX - length * 0.05, 0, 0));
-      points.push(new THREE.Vector3(endX, 0, 0));
+      points.push(end.clone().addScaledVector(unitDir, -length * 0.05));
+      points.push(end.clone());
 
       return points;
     },
@@ -154,8 +163,8 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
 
     container.appendChild(renderer.domElement);
 
-    // Studio Lighting
-    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 0.8);
+    // Studio Lighting Rig
+    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 0.85);
     scene.add(hemiLight);
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
@@ -165,38 +174,37 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     dirLight.shadow.mapSize.height = 1024;
     scene.add(dirLight);
 
-    const rimLight = new THREE.DirectionalLight(0x06b6d4, 1.2);
+    const rimLight = new THREE.DirectionalLight(0x06b6d4, 1.4);
     rimLight.position.set(-6, 2, -4);
     scene.add(rimLight);
 
     // Floor Grid
     const grid = new THREE.GridHelper(16, 32, 0x0284c7, 0x1e293b);
-    grid.position.y = -1.5;
+    grid.position.y = -2.5;
     scene.add(grid);
 
     // Metallic Rig Support (Mounting Wall & Rod)
     const rigGroup = new THREE.Group();
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.2 });
 
-    // Vertical Support Post / Wall
+    // Horizontal Support Wall
     const postGeo = new THREE.BoxGeometry(0.4, 3.2, 1.4);
     const postMesh = new THREE.Mesh(postGeo, metalMat);
     postMesh.position.set(-3.6, 0.1, 0);
     postMesh.castShadow = true;
     rigGroup.add(postMesh);
 
-    // Equilibrium indicator bar
-    const eqMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, wireframe: true });
-    const eqGeo = new THREE.CylinderGeometry(0.015, 0.015, 2.5, 8);
-    eqGeo.rotateZ(Math.PI / 2);
-    const eqLine = new THREE.Mesh(eqGeo, eqMat);
-    eqLine.position.set(0, -1.2, 0);
-    rigGroup.add(eqLine);
+    // Top Ceiling Beam (for vertical mode)
+    const ceilingGeo = new THREE.BoxGeometry(2.0, 0.3, 1.2);
+    const ceilingMesh = new THREE.Mesh(ceilingGeo, metalMat);
+    ceilingMesh.position.set(0, 2.6, 0);
+    rigGroup.add(ceilingMesh);
 
     scene.add(rigGroup);
+    rigGroupRef.current = rigGroup;
 
     // Procedural Helical Spring Line
-    const initialPoints = generateSpringPoints(-3.4, 0);
+    const initialPoints = generateSpringPoints(new THREE.Vector3(-3.4, 0, 0), new THREE.Vector3(0, 0, 0));
     const springGeo = new THREE.BufferGeometry().setFromPoints(initialPoints);
     springGeometryRef.current = springGeo;
     const springMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2 });
@@ -216,18 +224,18 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     blockMesh.castShadow = true;
     blockGroup.add(blockMesh);
 
-    // Metallic attachment bracket
+    // Metallic attachment brackets
     const hookGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.2, 16);
     hookGeo.rotateZ(Math.PI / 2);
     const hookMesh = new THREE.Mesh(hookGeo, metalMat);
     hookMesh.position.x = -0.45;
     blockGroup.add(hookMesh);
 
-    // Mass inscription label badge
-    const badgeGeo = new THREE.BoxGeometry(0.5, 0.25, 0.86);
-    const badgeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
-    const badgeMesh = new THREE.Mesh(badgeGeo, badgeMat);
-    blockGroup.add(badgeMesh);
+    // Top hook for vertical mode
+    const hookTopGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.2, 16);
+    const hookTopMesh = new THREE.Mesh(hookTopGeo, metalMat);
+    hookTopMesh.position.y = 0.45;
+    blockGroup.add(hookTopMesh);
 
     scene.add(blockGroup);
     blockGroupRef.current = blockGroup;
@@ -235,10 +243,13 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     // Vectors
     const forceArrow = new THREE.ArrowHelper(new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, 0), 1, 0xef4444, 0.2, 0.12);
     const velArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 1, 0x10b981, 0.2, 0.12);
+    const weightArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 0), 1, 0xf59e0b, 0.2, 0.12);
     scene.add(forceArrow);
     scene.add(velArrow);
+    scene.add(weightArrow);
     forceArrowRef.current = forceArrow;
     velArrowRef.current = velArrow;
+    weightArrowRef.current = weightArrow;
 
     // Mouse drag orbit controls
     const onMouseDown = (e: MouseEvent) => {
@@ -323,7 +334,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
         }
       }
 
-      // Compute position
+      // Compute physical state
       const st = calculateSpringMass(
         clock.time,
         mass,
@@ -336,47 +347,91 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
         externalFreq
       );
 
-      const displacementX = st.position;
-      const blockX = displacementX;
+      // Position update in 3D
+      if (isVertical) {
+        // Vertical mode: equilibrium position is lowered by delta y0 = mg/k
+        // Block oscillates around -delta_y0
+        const blockY = 0.5 - (st.staticElongation + st.position);
 
-      // Update Mass Block
-      if (blockGroupRef.current) {
-        if (isVertical) {
-          // Vertical orientation
-          blockGroupRef.current.position.set(0, -st.position - st.staticElongation, 0);
-        } else {
+        if (blockGroupRef.current) {
+          blockGroupRef.current.position.set(0, blockY, 0);
+        }
+
+        // Spring points from ceiling (0, 2.5, 0) to top of block (0, blockY + 0.42, 0)
+        if (springGeometryRef.current) {
+          const ceilingStart = new THREE.Vector3(0, 2.5, 0);
+          const blockEnd = new THREE.Vector3(0, blockY + 0.42, 0);
+          const pts = generateSpringPoints(ceilingStart, blockEnd);
+          springGeometryRef.current.setFromPoints(pts);
+          springGeometryRef.current.computeVertexNormals();
+        }
+
+        // Vectors in Vertical Mode
+        if (clock.showVectors && forceArrowRef.current && velArrowRef.current && weightArrowRef.current) {
+          forceArrowRef.current.visible = true;
+          velArrowRef.current.visible = true;
+          weightArrowRef.current.visible = true;
+
+          // Elastic restoring force Fel = k * elongation upward (if stretched) or downward (if compressed)
+          const totalElongation = st.position + st.staticElongation;
+          const felMag = Math.abs(springK * totalElongation);
+          const fDirY = totalElongation >= 0 ? 1 : -1;
+          forceArrowRef.current.position.set(0, blockY + (fDirY > 0 ? 0.45 : -0.45), 0);
+          forceArrowRef.current.setDirection(new THREE.Vector3(0, fDirY, 0));
+          forceArrowRef.current.setLength(Math.max(0.01, Math.min(2.5, felMag * 0.03)), 0.2, 0.1);
+
+          // Weight force downwards P = mg
+          weightArrowRef.current.position.set(0, blockY - 0.45, 0);
+          weightArrowRef.current.setDirection(new THREE.Vector3(0, -1, 0));
+          weightArrowRef.current.setLength(Math.max(0.01, Math.min(2.0, (mass * gravity) * 0.05)), 0.2, 0.1);
+
+          // Velocity vector
+          const vDir = st.velocity >= 0 ? 1 : -1;
+          velArrowRef.current.position.set(0.6, blockY, 0);
+          velArrowRef.current.setDirection(new THREE.Vector3(0, -vDir, 0));
+          velArrowRef.current.setLength(Math.max(0.01, Math.min(2.5, Math.abs(st.velocity) * 0.3)), 0.2, 0.1);
+        } else if (forceArrowRef.current && velArrowRef.current && weightArrowRef.current) {
+          forceArrowRef.current.visible = false;
+          velArrowRef.current.visible = false;
+          weightArrowRef.current.visible = false;
+        }
+      } else {
+        // Horizontal Mode
+        const blockX = st.position;
+
+        if (blockGroupRef.current) {
           blockGroupRef.current.position.set(blockX, 0, 0);
         }
-      }
 
-      // Update Procedural Spring Deformation
-      if (springGeometryRef.current) {
-        const wallX = -3.4;
-        const currentPoints = generateSpringPoints(wallX, blockX - 0.42);
-        springGeometryRef.current.setFromPoints(currentPoints);
-        springGeometryRef.current.computeVertexNormals();
-      }
+        if (springGeometryRef.current) {
+          const wallStart = new THREE.Vector3(-3.4, 0, 0);
+          const blockEnd = new THREE.Vector3(blockX - 0.42, 0, 0);
+          const currentPoints = generateSpringPoints(wallStart, blockEnd);
+          springGeometryRef.current.setFromPoints(currentPoints);
+          springGeometryRef.current.computeVertexNormals();
+        }
 
-      // Update Force & Velocity Vectors
-      if (clock.showVectors && forceArrowRef.current && velArrowRef.current) {
-        forceArrowRef.current.visible = true;
-        velArrowRef.current.visible = true;
+        // Vectors in Horizontal Mode
+        if (clock.showVectors && forceArrowRef.current && velArrowRef.current && weightArrowRef.current) {
+          forceArrowRef.current.visible = true;
+          velArrowRef.current.visible = true;
+          weightArrowRef.current.visible = false; // weight cancelled by normal in horizontal
 
-        // Restoring force Fel = -k * x
-        const fel = -springK * st.position;
-        const fDir = fel >= 0 ? 1 : -1;
-        forceArrowRef.current.position.set(blockX, 0.6, 0);
-        forceArrowRef.current.setDirection(new THREE.Vector3(fDir, 0, 0));
-        forceArrowRef.current.setLength(Math.max(0.01, Math.min(2.5, Math.abs(fel) * 0.04)), 0.2, 0.1);
+          const fel = -springK * st.position;
+          const fDir = fel >= 0 ? 1 : -1;
+          forceArrowRef.current.position.set(blockX, 0.6, 0);
+          forceArrowRef.current.setDirection(new THREE.Vector3(fDir, 0, 0));
+          forceArrowRef.current.setLength(Math.max(0.01, Math.min(2.5, Math.abs(fel) * 0.04)), 0.2, 0.1);
 
-        // Velocity vector
-        const vDir = st.velocity >= 0 ? 1 : -1;
-        velArrowRef.current.position.set(blockX, -0.6, 0);
-        velArrowRef.current.setDirection(new THREE.Vector3(vDir, 0, 0));
-        velArrowRef.current.setLength(Math.max(0.01, Math.min(2.5, Math.abs(st.velocity) * 0.3)), 0.2, 0.1);
-      } else if (forceArrowRef.current && velArrowRef.current) {
-        forceArrowRef.current.visible = false;
-        velArrowRef.current.visible = false;
+          const vDir = st.velocity >= 0 ? 1 : -1;
+          velArrowRef.current.position.set(blockX, -0.6, 0);
+          velArrowRef.current.setDirection(new THREE.Vector3(vDir, 0, 0));
+          velArrowRef.current.setLength(Math.max(0.01, Math.min(2.5, Math.abs(st.velocity) * 0.3)), 0.2, 0.1);
+        } else if (forceArrowRef.current && velArrowRef.current && weightArrowRef.current) {
+          forceArrowRef.current.visible = false;
+          velArrowRef.current.visible = false;
+          weightArrowRef.current.visible = false;
+        }
       }
 
       if (rendererRef.current && sceneRef.current && cameraRef.current) {
@@ -399,14 +454,34 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     { key: 'Em', label: 'Energia Mecânica Total Em', color: '#a855f7', unit: 'J' },
   ];
 
+  const regimeLabel =
+    currentState.dampingRegime === 'undamped'
+      ? 'Não Amortecido (Ideal)'
+      : currentState.dampingRegime === 'underdamped'
+      ? 'Subamortecido (Oscilatório)'
+      : currentState.dampingRegime === 'critically_damped'
+      ? 'Criticamente Amortecido (Retorno Rápido)'
+      : 'Superamortecido (Retorno Lento)';
+
   const quantities: PhysicalQuantity[] = [
     { label: 'Elongação', symbol: 'x', value: currentState.position, unit: 'm', precision: 3, highlight: true },
     { label: 'Velocidade', symbol: 'v', value: currentState.velocity, unit: 'm/s', precision: 3 },
+    { label: 'Aceleração', symbol: 'a', value: currentState.acceleration, unit: 'm/s²', precision: 3 },
     { label: 'Energia Cinética', symbol: 'Ec', value: currentState.kineticEnergy, unit: 'J', precision: 3 },
     { label: 'Energia Potencial', symbol: 'Ep', value: currentState.potentialEnergy, unit: 'J', precision: 3 },
     { label: 'Energia Total', symbol: 'Em', value: currentState.totalEnergy, unit: 'J', precision: 3 },
     { label: 'Período Próprio', symbol: 'T₀', value: currentState.naturalPeriod, unit: 's', precision: 2 },
   ];
+
+  if (isVertical) {
+    quantities.push({
+      label: 'Alongamento Estático',
+      symbol: 'Δy₀',
+      value: currentState.staticElongation,
+      unit: 'm',
+      precision: 3,
+    });
+  }
 
   return (
     <div className="w-full h-full flex flex-col bg-slate-950 text-slate-100">
@@ -418,12 +493,13 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
             <div className="bg-slate-900/85 border border-slate-800 px-3 py-1.5 rounded-md backdrop-blur-md shadow-lg">
               <span className="text-[11px] font-mono text-cyan-400 font-semibold block">SISTEMA MASSA-MOLA 3D</span>
               <span className="text-xs text-slate-300">
-                {dampingCoeff > 0 ? 'Oscilador Amortecido' : 'Oscilador Harmônico Ideal'} | {isVertical ? 'Vertical' : 'Horizontal'}
+                Regime: <span className="font-semibold text-cyan-300">{regimeLabel}</span> | {isVertical ? 'Montagem Vertical' : 'Montagem Horizontal'}
               </span>
             </div>
-            {dampingCoeff > 0 && (
-              <div className="bg-amber-950/40 border border-amber-800/60 px-2.5 py-1 rounded text-[11px] text-amber-300">
-                Dissipação viscosa ativa: Em(t) decresce exponencialmente
+
+            {isVertical && (
+              <div className="bg-slate-900/80 border border-slate-800 px-2.5 py-1 rounded text-xs text-slate-300">
+                Alongamento estático da gravidade: <span className="font-mono text-amber-400 font-bold">Δy₀ = mg/k = {currentState.staticElongation.toFixed(3)} m</span>
               </div>
             )}
           </div>
@@ -460,6 +536,35 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
             <div className="flex items-center gap-2">
               <Sliders className="w-4 h-4 text-cyan-400" />
               <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros Mecânicos</span>
+            </div>
+          </div>
+
+          {/* Orientation Toggle: Horizontal vs Vertical */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-slate-400">Orientação do Experimento:</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => setIsVertical(false)}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors border ${
+                  !isVertical
+                    ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <MoveHorizontal className="w-3.5 h-3.5" />
+                <span>Horizontal</span>
+              </button>
+              <button
+                onClick={() => setIsVertical(true)}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors border ${
+                  isVertical
+                    ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <ArrowDownUp className="w-3.5 h-3.5" />
+                <span>Vertical</span>
+              </button>
             </div>
           </div>
 
@@ -500,7 +605,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
           {/* Initial Amplitude */}
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Elongação Inicial (A):</span>
+              <span className="text-slate-400">Elongação Inicial (A = x₀):</span>
               <span className="font-mono text-cyan-400 font-medium">{amplitude.toFixed(2)} m</span>
             </div>
             <input
@@ -523,12 +628,16 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
             <input
               type="range"
               min="0"
-              max="3.0"
-              step="0.05"
+              max="16.0"
+              step="0.2"
               value={dampingCoeff}
               onChange={(e) => setDampingCoeff(parseFloat(e.target.value))}
               className="w-full accent-amber-500 h-1.5 bg-slate-800 rounded cursor-pointer"
             />
+            <div className="text-[10px] text-slate-500 flex justify-between">
+              <span>Crítico em b = {(2 * Math.sqrt(springK * mass)).toFixed(2)}</span>
+              <span className="font-mono text-cyan-400 font-semibold">{regimeLabel}</span>
+            </div>
           </div>
 
           {/* External Periodic Force (Resonance Demonstration) */}
@@ -536,7 +645,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
             <div className="flex items-center justify-between text-xs">
               <span className="text-rose-300 font-medium flex items-center gap-1">
                 <Activity className="w-3.5 h-3.5" />
-                Força Forçada (Ressonância):
+                Força Forçada F₀ cos(ω_e t):
               </span>
               <input
                 type="checkbox"
@@ -550,7 +659,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
               <div className="flex flex-col gap-2 bg-rose-950/20 p-2 rounded border border-rose-900/40">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Freq. Externa:</span>
+                    <span className="text-slate-400">Freq. Externa (f_ext):</span>
                     <span className="font-mono text-rose-400">{externalFreq.toFixed(2)} Hz</span>
                   </div>
                   <input
@@ -576,6 +685,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
               <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações Governantes</span>
               <KaTeXMath math="F_{\text{el}} = -kx" block />
               <KaTeXMath math="T_0 = 2\pi\sqrt{\frac{m}{k}}" block />
+              {isVertical && <KaTeXMath math="\Delta y_0 = \frac{mg}{k}" block />}
               <KaTeXMath math="E_m = \frac{1}{2}mv^2 + \frac{1}{2}kx^2" block />
             </div>
           )}

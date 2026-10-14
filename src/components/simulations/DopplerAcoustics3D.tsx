@@ -58,6 +58,9 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
   const observerMeshRef = useRef<THREE.Group | null>(null);
   const wavefrontsGroupRef = useRef<THREE.Group | null>(null);
   const ringsDataRef = useRef<WavefrontRing[]>([]);
+  const ringPoolRef = useRef<THREE.Mesh[]>([]);
+  const srcArrowRef = useRef<THREE.ArrowHelper | null>(null);
+  const obsArrowRef = useRef<THREE.ArrowHelper | null>(null);
   const lastEmitTimeRef = useRef<number>(0);
   const animFrameRef = useRef<number | null>(null);
   const cameraAngleRef = useRef<{ theta: number; phi: number; radius: number }>({
@@ -72,8 +75,10 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
     ringsDataRef.current = [];
-    if (wavefrontsGroupRef.current) {
-      wavefrontsGroupRef.current.clear();
+    if (ringPoolRef.current) {
+      ringPoolRef.current.forEach((m) => {
+        m.visible = false;
+      });
     }
   }, []);
 
@@ -101,10 +106,11 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
   useEffect(() => {
     // Cyclic source trajectory between -80m and +80m
     const travelSpan = 160;
-    const cycleTime = travelSpan / Math.max(1, sourceSpeed);
+    const cycleTime = travelSpan / Math.max(1, Math.abs(sourceSpeed));
     const modTime = clock.time % cycleTime;
     const srcX = -80 + modTime * sourceSpeed;
-    const obsX = 20;
+    // Observer position responds to observer speed
+    const obsX = 20 + (observerSpeed !== 0 ? (((clock.time * observerSpeed) % 80 + 80) % 80 - 40) : 0);
 
     const st = calculateDoppler(srcX, obsX, sourceSpeed, observerSpeed, sourceFreq, soundSpeed);
     setCurrentState(st);
@@ -207,10 +213,36 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
     scene.add(observerGroup);
     observerMeshRef.current = observerGroup;
 
-    // Expanding Wavefront Rings Group
+    // Expanding Wavefront Rings Group (Pre-allocated pool to prevent GPU memory churn)
     const wavefrontsGroup = new THREE.Group();
+    const unitRingGeo = new THREE.RingGeometry(0.96, 1.04, 48);
+    unitRingGeo.rotateX(Math.PI / 2);
+    const ringMeshPool: THREE.Mesh[] = [];
+
+    for (let k = 0; k < 32; k++) {
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x06b6d4,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+      });
+      const ringMesh = new THREE.Mesh(unitRingGeo, ringMat);
+      ringMesh.visible = false;
+      wavefrontsGroup.add(ringMesh);
+      ringMeshPool.push(ringMesh);
+    }
+
     scene.add(wavefrontsGroup);
     wavefrontsGroupRef.current = wavefrontsGroup;
+    ringPoolRef.current = ringMeshPool;
+
+    // Velocity Vector Helpers
+    const srcArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.8, 0), 1, 0x38bdf8, 0.3, 0.15);
+    const obsArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.8, 0), 1, 0x10b981, 0.3, 0.15);
+    scene.add(srcArrow);
+    scene.add(obsArrow);
+    srcArrowRef.current = srcArrow;
+    obsArrowRef.current = obsArrow;
 
     // Mouse drag
     const onMouseDown = (e: MouseEvent) => {
@@ -258,6 +290,10 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
       window.removeEventListener('mouseup', onMouseUp);
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', onResize);
+      unitRingGeo.dispose();
+      ringMeshPool.forEach((m) => {
+        (m.material as THREE.Material).dispose();
+      });
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
@@ -300,15 +336,45 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
       // Scaled world positions (1 unit in 3D = 10 meters)
       const scalePos = 0.15;
       const travelSpan = 160;
-      const cycleTime = travelSpan / Math.max(1, sourceSpeed);
+      const cycleTime = travelSpan / Math.max(1, Math.abs(sourceSpeed));
       const modTime = t % cycleTime;
       const srcWorldX = (-80 + modTime * sourceSpeed) * scalePos;
+      const obsWorldX = (20 + (observerSpeed !== 0 ? (((t * observerSpeed) % 80 + 80) % 80 - 40) : 0)) * scalePos;
 
       if (sourceVehicleRef.current) {
         sourceVehicleRef.current.position.x = srcWorldX;
       }
+      if (observerMeshRef.current) {
+        observerMeshRef.current.position.x = obsWorldX;
+      }
 
-      // Emit new wavefront ring every ~0.3s
+      // Vector visualizers
+      if (clock.showVectors && srcArrowRef.current && obsArrowRef.current) {
+        const srcMag = Math.abs(sourceSpeed);
+        if (srcMag > 0.5) {
+          srcArrowRef.current.visible = true;
+          srcArrowRef.current.position.set(srcWorldX, 0.9, 0);
+          srcArrowRef.current.setDirection(new THREE.Vector3(sourceSpeed >= 0 ? 1 : -1, 0, 0));
+          srcArrowRef.current.setLength(Math.max(0.1, Math.min(2.5, srcMag * 0.03)), 0.25, 0.12);
+        } else {
+          srcArrowRef.current.visible = false;
+        }
+
+        const obsMag = Math.abs(observerSpeed);
+        if (obsMag > 0.5) {
+          obsArrowRef.current.visible = true;
+          obsArrowRef.current.position.set(obsWorldX, 1.3, 1.8);
+          obsArrowRef.current.setDirection(new THREE.Vector3(observerSpeed >= 0 ? 1 : -1, 0, 0));
+          obsArrowRef.current.setLength(Math.max(0.1, Math.min(2.5, obsMag * 0.03)), 0.25, 0.12);
+        } else {
+          obsArrowRef.current.visible = false;
+        }
+      } else if (srcArrowRef.current && obsArrowRef.current) {
+        srcArrowRef.current.visible = false;
+        obsArrowRef.current.visible = false;
+      }
+
+      // Emit new wavefront ring every ~0.25s
       if (t - lastEmitTimeRef.current >= 0.25) {
         lastEmitTimeRef.current = t;
         ringsDataRef.current.push({
@@ -316,31 +382,31 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
           birthTime: t,
         });
 
-        if (ringsDataRef.current.length > 28) {
+        if (ringsDataRef.current.length > 30) {
           ringsDataRef.current.shift();
         }
       }
 
-      // Render expanding wavefront rings in 3D
-      if (wavefrontsGroupRef.current) {
-        wavefrontsGroupRef.current.clear();
+      // Update wavefront rings from pre-allocated pool (0 GPU leaks)
+      const pool = ringPoolRef.current;
+      if (pool) {
         const vSoundScaled = soundSpeed * scalePos;
-
-        ringsDataRef.current.forEach((ring) => {
-          const age = t - ring.birthTime;
-          if (age > 0) {
-            const currentRadius = age * vSoundScaled * 0.45;
-            const ringGeo = new THREE.RingGeometry(currentRadius - 0.04, currentRadius + 0.04, 48);
-            ringGeo.rotateX(Math.PI / 2);
-            const ringMat = new THREE.MeshBasicMaterial({
-              color: 0x06b6d4,
-              transparent: true,
-              opacity: Math.max(0.1, 1.0 - age / 3.0),
-              side: THREE.DoubleSide,
-            });
-            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-            ringMesh.position.copy(ringringCenterClamp(ring.center));
-            wavefrontsGroupRef.current?.add(ringMesh);
+        pool.forEach((mesh, idx) => {
+          if (idx < ringsDataRef.current.length) {
+            const ring = ringsDataRef.current[idx];
+            const age = t - ring.birthTime;
+            if (age > 0) {
+              const currentRadius = age * vSoundScaled * 0.45;
+              mesh.position.set(ring.center.x, 0.02, ring.center.z);
+              mesh.scale.set(currentRadius, 1, currentRadius);
+              const mat = mesh.material as THREE.MeshBasicMaterial;
+              mat.opacity = Math.max(0.05, 1.0 - age / 3.0);
+              mesh.visible = true;
+            } else {
+              mesh.visible = false;
+            }
+          } else {
+            mesh.visible = false;
           }
         });
       }
@@ -352,13 +418,11 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
-    const ringringCenterClamp = (c: THREE.Vector3) => new THREE.Vector3(c.x, 0.02, c.z);
-
     animFrameRef.current = requestAnimationFrame(loop);
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, sourceSpeed, soundSpeed]);
+  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, clock.showVectors, sourceSpeed, observerSpeed, soundSpeed]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'fObs', label: 'Frequência Percebida f_obs', color: '#38bdf8', unit: 'Hz' },
@@ -491,6 +555,30 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
               onChange={(e) => setSourceSpeed(parseFloat(e.target.value))}
               className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
             />
+          </div>
+
+          {/* Observer Velocity (v_o) */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-400">Velocidade do Observador (vo):</span>
+              <span className="font-mono text-emerald-400 font-medium">
+                {observerSpeed >= 0 ? `+${observerSpeed.toFixed(0)}` : observerSpeed.toFixed(0)} m/s ({(observerSpeed * 3.6).toFixed(0)} km/h)
+              </span>
+            </div>
+            <input
+              type="range"
+              min="-60"
+              max="60"
+              step="5"
+              value={observerSpeed}
+              onChange={(e) => setObserverSpeed(parseFloat(e.target.value))}
+              className="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+              <span>-60 m/s (esq)</span>
+              <span>0 (repouso)</span>
+              <span>+60 m/s (dir)</span>
+            </div>
           </div>
 
           {/* Emitted Frequency (f_0) */}

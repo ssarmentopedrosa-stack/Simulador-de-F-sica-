@@ -137,23 +137,28 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
     clamp2.position.set(2.0, -0.2, 0);
     scene.add(clamp1, clamp2);
 
-    // Vibrating String Mesh (Tube)
-    const strPoints: THREE.Vector3[] = [];
-    for (let x = -2.0; x <= 2.0; x += 0.1) {
-      strPoints.push(new THREE.Vector3(x, 0, 0));
+    // Vibrating String Dynamic Line
+    const steps = 80;
+    const strPositions = new Float32Array((steps + 1) * 3);
+    for (let i = 0; i <= steps; i++) {
+      const x = -2.0 + (i / steps) * 4.0;
+      strPositions[i * 3] = x;
+      strPositions[i * 3 + 1] = 0;
+      strPositions[i * 3 + 2] = 0;
     }
-    const strCurve = new THREE.CatmullRomCurve3(strPoints);
-    const strGeo = new THREE.TubeGeometry(strCurve, 80, 0.05, 10, false);
-    const strMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.7, roughness: 0.2 });
-    const stringMesh = new THREE.Mesh(strGeo, strMat);
-    stringMesh.castShadow = true;
-    scene.add(stringMesh);
-    stringMeshRef.current = stringMesh;
+    const strGeo = new THREE.BufferGeometry();
+    strGeo.setAttribute('position', new THREE.BufferAttribute(strPositions, 3));
+    const strMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 4 });
+    const stringLine = new THREE.Line(strGeo, strMat);
+    scene.add(stringLine);
+    stringMeshRef.current = stringLine as unknown as THREE.Mesh;
 
     // Envelopes of Vibration (Upper and Lower limit curves)
     const envMat = new THREE.LineDashedMaterial({ color: 0x0284c7, dashSize: 0.1, gapSize: 0.05 });
-    const envGeoPos = new THREE.BufferGeometry().setFromPoints(strPoints);
-    const envGeoNeg = new THREE.BufferGeometry().setFromPoints(strPoints);
+    const envGeoPos = new THREE.BufferGeometry();
+    envGeoPos.setAttribute('position', new THREE.BufferAttribute(new Float32Array(strPositions), 3));
+    const envGeoNeg = new THREE.BufferGeometry();
+    envGeoNeg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(strPositions), 3));
     const envLinePos = new THREE.Line(envGeoPos, envMat);
     const envLineNeg = new THREE.Line(envGeoNeg, envMat);
     envLinePos.computeLineDistances();
@@ -274,12 +279,12 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
       const omega = 2 * Math.PI * info.frequency;
       const halfL = length / 2;
 
-      // Update String Mesh Vibration
-      if (stringMeshRef.current) {
-        const points: THREE.Vector3[] = [];
+      // Update String Mesh Vibration In-Place (0 memory allocations)
+      if (stringMeshRef.current && stringMeshRef.current.geometry) {
+        const posAttr = stringMeshRef.current.geometry.attributes.position;
+        const steps = 80;
         const envPosPoints: THREE.Vector3[] = [];
         const envNegPoints: THREE.Vector3[] = [];
-        const steps = 80;
 
         for (let i = 0; i <= steps; i++) {
           const frac = i / steps;
@@ -296,14 +301,11 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
           }
 
           const yInstant = 2 * amplitude * ySpatial * Math.cos(omega * t);
-          points.push(new THREE.Vector3(xWorld, yInstant, 0));
+          posAttr.setXYZ(i, xWorld, yInstant, 0);
           envPosPoints.push(new THREE.Vector3(xWorld, 2 * amplitude * Math.abs(ySpatial), 0));
           envNegPoints.push(new THREE.Vector3(xWorld, -2 * amplitude * Math.abs(ySpatial), 0));
         }
-
-        const curve = new THREE.CatmullRomCurve3(points);
-        stringMeshRef.current.geometry.dispose();
-        stringMeshRef.current.geometry = new THREE.TubeGeometry(curve, 80, 0.05, 10, false);
+        posAttr.needsUpdate = true;
 
         // Update Envelope Lines
         if (envelopeLinePosRef.current && envelopeLineNegRef.current) {
@@ -443,16 +445,18 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
           {/* Harmonic Number (n) */}
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Número do Harmônico (n):</span>
-              <span className="font-mono text-cyan-400 font-medium">{harmonic}º Harmônico</span>
+              <span className="text-slate-400">Harmônico Ativo:</span>
+              <span className="font-mono text-cyan-400 font-medium">
+                {waveInfo.harmonicNumber}º Harmônico {boundary === 'pipe_closed_open' ? `(Modo m = ${waveInfo.modeIndex})` : ''}
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
-              {[1, 2, 3, 4, 5, 6].map((nVal) => (
+              {(boundary === 'pipe_closed_open' ? [1, 3, 5, 7, 9, 11] : [1, 2, 3, 4, 5, 6]).map((nVal) => (
                 <button
                   key={nVal}
                   onClick={() => setHarmonic(nVal)}
                   className={`flex-1 py-1 rounded text-xs font-mono font-semibold transition-colors border ${
-                    harmonic === nVal
+                    waveInfo.harmonicNumber === nVal
                       ? 'bg-cyan-500 border-cyan-400 text-slate-950'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                   }`}
@@ -461,6 +465,11 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
                 </button>
               ))}
             </div>
+            {boundary === 'pipe_closed_open' && (
+              <span className="text-[10px] text-amber-400/90 mt-0.5">
+                Em tubos com uma extremidade fechada, só existem harmônicos ímpares (n = 1, 3, 5, 7, 9, 11).
+              </span>
+            )}
           </div>
 
           {/* Length (L) */}
