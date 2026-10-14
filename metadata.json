@@ -1,0 +1,6 @@
+{
+  "name": "ONDAS LAB 3D — Laboratório Virtual de Oscilações e Ondas",
+  "description": "Plataforma científica e educacional interativa de simulação 3D de oscilações, ondas mecânicas, acústica, efeito Doppler, interferência e preparação para o ENEM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
