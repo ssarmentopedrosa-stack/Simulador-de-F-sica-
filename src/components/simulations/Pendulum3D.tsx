@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { integratePendulumRK4, PendulumState } from '../../physics/math';
+import { integratePendulumRK4 } from '../../physics/math';
 import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity, GravityPreset } from '../../types/physics';
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
@@ -41,9 +41,16 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
     showGraphs: true,
   });
 
+  const timeRef = useRef<number>(0);
+  timeRef.current = clock.time;
+
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
-  const [currentState, setCurrentState] = useState<PendulumState>(() =>
-    integratePendulumRK4((30 * Math.PI) / 180, 2.0, 1.0, 9.8, 0, 0)
+
+  // Synchronous pure derived state
+  const theta0Rad = (theta0Deg * Math.PI) / 180;
+  const currentState = useMemo(
+    () => integratePendulumRK4(theta0Rad, length, mass, gravity, damping, clock.time, 250),
+    [theta0Rad, length, mass, gravity, damping, clock.time]
   );
 
   // Three.js refs
@@ -66,29 +73,29 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
-  // Update physical integration
+  // Update physical telemetry
   useEffect(() => {
-    const theta0Rad = (theta0Deg * Math.PI) / 180;
-    const st = integratePendulumRK4(theta0Rad, length, mass, gravity, damping, clock.time, 250);
-    setCurrentState(st);
-
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
       const newPt: DataPoint = {
         t: clock.time,
-        thetaDeg: st.thetaDeg,
-        omega: st.omega,
-        Ec: st.kineticEnergy,
-        Ep: st.potentialEnergy,
-        Em: st.totalEnergy,
+        thetaDeg: currentState.thetaDeg,
+        omega: currentState.omega,
+        Ec: currentState.kineticEnergy,
+        Ep: currentState.potentialEnergy,
+        Em: currentState.totalEnergy,
       };
       const updated = [...prev, newPt];
       return updated.length > 300 ? updated.slice(-300) : updated;
     });
-  }, [clock.time, length, mass, theta0Deg, gravity, damping]);
+  }, [clock.time, currentState]);
 
   // Setup Three.js scene
   useEffect(() => {
@@ -279,11 +286,14 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
+
+      const simTime = timeRef.current;
 
       // Camera coordinates
       const cam = cameraRef.current;
@@ -302,7 +312,7 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
 
       // Physics integration for current frame
       const theta0Rad = (theta0Deg * Math.PI) / 180;
-      const st = integratePendulumRK4(theta0Rad, length, mass, gravity, damping, clock.time, 250);
+      const st = integratePendulumRK4(theta0Rad, length, mass, gravity, damping, simTime, 250);
 
       // Rotate pendulum arm around pivot (0, 1.8, 0)
       if (rodGroupRef.current) {
@@ -363,7 +373,7 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, clock.showVectors, length, mass, theta0Deg, gravity, damping]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, clock.showVectors, length, mass, theta0Deg, gravity, damping]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'thetaDeg', label: 'Ângulo θ(t)', color: '#38bdf8', unit: '°' },
@@ -560,7 +570,10 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

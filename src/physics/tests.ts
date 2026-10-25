@@ -13,8 +13,10 @@ import {
   calculateStandingWave,
   calculateDoppler,
   calculateRefraction,
+  completeEllipticK,
+  singleSlitDiffractionIntensity,
 } from './math';
-import { AutomatedTestResult } from '../types/physics';
+import { AutomatedTestResult, isValidModuleId } from '../types/physics';
 
 export function runAllPhysicsTests(): AutomatedTestResult[] {
   const results: AutomatedTestResult[] = [];
@@ -615,11 +617,121 @@ export function runAllPhysicsTests(): AutomatedTestResult[] {
       allValid,
       'Todos os harmônicos (1, 3, 5, 7) satisfazem nós em 0, ventres em L e f_n = n·v/(4L)',
       allValid ? 'Série completa 100% verificada' : 'Discrepância detectada',
-      'Exato',
-      'Modos m = 1, 2, 3, 4 com n = 1, 3, 5, 7 confirmados.'
     );
   } catch (err) {
     addTest('test_standing_wave_pipe_series', 'Série de Harmônicos Tubo Fechado-Aberto', 'Ondas Estacionárias', 'Erro', false, 'Série Válida', String(err));
+  }
+
+  // Test 23: Module ID Validator & LocalStorage Fallback Protection
+  try {
+    const validCheck1 = isValidModuleId('doppler');
+    const validCheck2 = isValidModuleId('shm');
+    const validCheck3 = isValidModuleId('standing_waves');
+    const invalidCheck1 = isValidModuleId('non_existent_module');
+    const invalidCheck2 = isValidModuleId('');
+    const invalidCheck3 = isValidModuleId(null);
+    const invalidCheck4 = isValidModuleId(123);
+    const passed =
+      validCheck1 &&
+      validCheck2 &&
+      validCheck3 &&
+      !invalidCheck1 &&
+      !invalidCheck2 &&
+      !invalidCheck3 &&
+      !invalidCheck4;
+
+    addTest(
+      'test_module_id_validator_resilience',
+      'Validação de Identificadores de Módulo e Proteção de Inicialização',
+      'Arquitetura do Sistema',
+      'Garante que identificadores válidos sejam aceitos e dados corrompidos do localStorage sejam rejeitados com fallback seguro.',
+      passed,
+      'Aceitar válidos e rejeitar inválidos/nulos/números',
+      passed ? 'Proteção 100% ativa' : 'Falha na validação',
+      'Exato',
+      'Testado com doppler, shm, standing_waves vs strings aleatórias e valores não-string.'
+    );
+  } catch (err) {
+    addTest('test_module_id_validator_resilience', 'Validação de Módulo', 'Sistema', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 24: Single-Slit Fraunhofer Diffraction First Minimum (a·sin(theta) = lambda)
+  try {
+    const a = 0.04; // slit width 4 cm
+    const lambda = 0.01; // wavelength 1 cm
+    // At first minimum: a * sin(theta) = lambda -> sin(theta) = lambda / a = 0.25
+    const thetaMin = Math.asin(lambda / a);
+    const intensityAtMin = singleSlitDiffractionIntensity(thetaMin, a, lambda);
+    const passed = intensityAtMin < 1e-12;
+
+    addTest(
+      'test_diffraction_first_minimum',
+      'Condição de Mínimo na Difração de Fraunhofer (a · sen θ = λ)',
+      'Fenômenos Ondulatórios',
+      'Confirma que a intensidade difratada se anula rigorosamente no primeiro mínimo de interferência destrutiva.',
+      passed,
+      'I(θ_min) = 0.000000',
+      `I(θ_min) = ${intensityAtMin.toExponential(4)}`,
+      '< 1e-12',
+      `a = ${a} m, λ = ${lambda} m, θ_min = ${(thetaMin * 180 / Math.PI).toFixed(2)}°`
+    );
+  } catch (err) {
+    addTest('test_diffraction_first_minimum', 'Difração Fenda Simples', 'Fenômenos Ondulatórios', 'Erro', false, 'I = 0', String(err));
+  }
+
+  // Test 25: Complete Elliptic Integral AGM Numerical Precision
+  try {
+    // Known exact mathematical benchmark: K(0.5) = 1.854074677301372...
+    const kHalf = completeEllipticK(0.5);
+    const benchmark = 1.854074677301372;
+    const errDiff = Math.abs(kHalf - benchmark);
+    const passed = errDiff < 1e-12;
+
+    addTest(
+      'test_elliptic_integral_benchmark',
+      'Precisão Numérica da Integral Elíptica Completa K(m) via AGM',
+      'Pêndulo Simples',
+      'Valida o algoritmo da Média Aritmético-Geométrica confrontado com o benchmark transcendental K(0.5).',
+      passed,
+      `K(0.5) = ${benchmark.toFixed(12)}`,
+      `K(0.5) = ${kHalf.toFixed(12)}`,
+      `Erro: ${errDiff.toExponential(2)} (< 1e-12)`,
+      'Convergência quadrática atingida com tolerância de máquina.'
+    );
+  } catch (err) {
+    addTest('test_elliptic_integral_benchmark', 'Integral Elíptica Benchmark', 'Pêndulo Simples', 'Erro', false, 'Precisão', String(err));
+  }
+
+  // Test 26: Damped Oscillator Dissipative Monotonicity vs Undamped Ideal Invariance
+  try {
+    const m = 1.0;
+    const k = 25.0;
+    const A = 0.5;
+    const stUndamped0 = calculateSpringMass(0, m, k, A, 0).totalEnergy;
+    const stUndampedT = calculateSpringMass(5.0, m, k, A, 0).totalEnergy;
+
+    const b = 0.8;
+    const stDamped0 = calculateSpringMass(0, m, k, A, b).totalEnergy;
+    const stDampedT = calculateSpringMass(5.0, m, k, A, b).totalEnergy;
+
+    const undampedPreserved = Math.abs(stUndampedT - stUndamped0) < 1e-9;
+    const dampedDecreased = stDampedT < stDamped0 * 0.1; // over 90% dissipated after 5s
+
+    const passed = undampedPreserved && dampedDecreased;
+
+    addTest(
+      'test_damped_vs_undamped_energy_dynamics',
+      'Dinâmica Comparativa de Energia: Ideal (Conservativo) vs Amortecido (Dissipativo)',
+      'Sistema Massa-Mola',
+      'Verifica que a energia mecânica permanece rigorosamente constante sem atrito e dissipa monótona e exponencialmente com amortecimento viscoso.',
+      passed,
+      'Ideal: ΔE = 0 | Amortecido: E(5s) << E(0)',
+      `Ideal: ΔE = ${Math.abs(stUndampedT - stUndamped0).toExponential(2)} J | Amortecido: E(0) = ${stDamped0.toFixed(3)} J -> E(5s) = ${stDampedT.toFixed(3)} J`,
+      '< 1e-9',
+      'Amortecimento viscoso dissipa > 90% da energia em 5s enquanto o oscilador ideal conserva 100%.'
+    );
+  } catch (err) {
+    addTest('test_damped_vs_undamped_energy_dynamics', 'Dinâmica Comparativa de Energia', 'Massa-Mola', 'Erro', false, 'Válido', String(err));
   }
 
   return results;

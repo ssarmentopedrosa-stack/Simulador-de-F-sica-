@@ -293,19 +293,22 @@ export function integratePendulumRK4(
   const g = Math.max(0.1, gravity);
   const b = Math.max(0, damping);
 
-  // Exact nonlinear period using Complete Elliptic Integral of the first kind K(m):
+  // Theoretical nonlinear period using Complete Elliptic Integral of the first kind K(m):
   // T_exact = 4 * sqrt(L/g) * K(sin^2(theta0 / 2))
-  const sinHalf = Math.sin(Math.abs(theta0) / 2.0);
-  const mElliptic = sinHalf * sinHalf;
+  // Physical validity: Strictly valid for an undamped simple pendulum (b = 0) with a rigid massless rod.
+  // When damping is present (b > 0), the system undergoes dissipative pseudo-periodic motion.
+  const thClamped = Math.min(Math.PI - 1e-5, Math.abs(theta0));
+  const sinHalf = Math.sin(thClamped / 2.0);
+  const mElliptic = Math.min(0.999999, sinHalf * sinHalf);
   const periodExact = (mElliptic < 1.0)
     ? 4.0 * Math.sqrt(L / g) * completeEllipticK(mElliptic)
     : Infinity;
 
-  // Small-angle approximation: T0 = 2*pi*sqrt(L/g)
+  // Small-angle harmonic approximation: T0 = 2*pi*sqrt(L/g)
   const periodApprox = 2.0 * Math.PI * Math.sqrt(L / g);
 
-  // Borda's Taylor series correction: T0 * (1 + (1/16)*theta0^2 + (11/3072)*theta0^4)
-  const th0 = Math.abs(theta0);
+  // Borda's Taylor series correction (valid for moderate angles): T0 * (1 + (1/16)*theta0^2 + (11/3072)*theta0^4)
+  const th0 = thClamped;
   const periodBorda = periodApprox * (1.0 + (1.0 / 16.0) * Math.pow(th0, 2) + (11.0 / 3072.0) * Math.pow(th0, 4));
 
   let th = theta0;
@@ -701,6 +704,12 @@ export function calculateRefraction(
   };
 }
 
+/**
+ * Fraunhofer Far-Field Diffraction Intensity for Single Slit of width a:
+ * I(theta) = I_0 * (sin(beta) / beta)^2, where beta = (pi * a * sin(theta)) / lambda.
+ * Physical limits: Far-field approximation (Fraunhofer regime, screen distance D >> a^2 / lambda).
+ * First diffraction minima occur strictly at a * sin(theta) = m * lambda (m = +-1, +-2...).
+ */
 export function singleSlitDiffractionIntensity(
   thetaRad: number,
   slitWidth: number,

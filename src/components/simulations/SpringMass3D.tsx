@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { calculateSpringMass, SpringMassState } from '../../physics/math';
+import { calculateSpringMass } from '../../physics/math';
 import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../../types/physics';
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
@@ -37,10 +37,26 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     showGraphs: true,
   });
 
-  // Chart data buffer & current physical state
+  const timeRef = useRef<number>(0);
+  timeRef.current = clock.time;
+
+  // Chart data buffer
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
-  const [currentState, setCurrentState] = useState<SpringMassState>(() =>
-    calculateSpringMass(0, 1.5, 45, 1.2, 0, false, 9.8)
+
+  // Synchronous pure derived state
+  const currentState = useMemo(
+    () => calculateSpringMass(
+      clock.time,
+      mass,
+      springK,
+      amplitude,
+      dampingCoeff,
+      isVertical,
+      gravity,
+      externalForceAmp,
+      externalFreq
+    ),
+    [clock.time, mass, springK, amplitude, dampingCoeff, isVertical, gravity, externalForceAmp, externalFreq]
   );
 
   // Three.js mutable scene refs
@@ -64,37 +80,28 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
-  // Update physical model & telemetry
+  // Update telemetry on tick
   useEffect(() => {
-    const st = calculateSpringMass(
-      clock.time,
-      mass,
-      springK,
-      amplitude,
-      dampingCoeff,
-      isVertical,
-      gravity,
-      externalForceAmp,
-      externalFreq
-    );
-    setCurrentState(st);
-
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
       const newPt: DataPoint = {
         t: clock.time,
-        pos: st.position,
-        Ec: st.kineticEnergy,
-        Ep: st.potentialEnergy,
-        Em: st.totalEnergy,
+        pos: currentState.position,
+        Ec: currentState.kineticEnergy,
+        Ep: currentState.potentialEnergy,
+        Em: currentState.totalEnergy,
       };
       const updated = [...prev, newPt];
       return updated.length > 300 ? updated.slice(-300) : updated;
     });
-  }, [clock.time, mass, springK, amplitude, dampingCoeff, isVertical, gravity, externalForceAmp, externalFreq]);
+  }, [clock.time, currentState]);
 
   // Universal 3D vector-based procedural helical spring points generator
   const generateSpringPoints = useCallback(
@@ -313,11 +320,14 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
+
+      const simTime = timeRef.current;
 
       // Camera Orbit
       const cam = cameraRef.current;
@@ -336,7 +346,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
 
       // Compute physical state
       const st = calculateSpringMass(
-        clock.time,
+        simTime,
         mass,
         springK,
         amplitude,
@@ -445,7 +455,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, clock.showVectors, mass, springK, amplitude, dampingCoeff, isVertical, gravity, externalForceAmp, externalFreq, generateSpringPoints]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, clock.showVectors, mass, springK, amplitude, dampingCoeff, isVertical, gravity, externalForceAmp, externalFreq, generateSpringPoints]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'pos', label: 'Elongação x(t)', color: '#38bdf8', unit: 'm' },
@@ -711,7 +721,10 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

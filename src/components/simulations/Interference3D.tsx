@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { calculateInterferenceAt, InterferencePoint } from '../../physics/math';
+import { calculateInterferenceAt } from '../../physics/math';
 import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../../types/physics';
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
@@ -34,17 +34,26 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
     showGraphs: true,
   });
 
+  const timeRef = useRef<number>(0);
+  timeRef.current = clock.time;
+
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
-  const [probeResult, setProbeResult] = useState<InterferencePoint>(() =>
-    calculateInterferenceAt(
-      1.5,
-      2.0,
-      0,
-      { x: -1.5, y: 0, amp: 0.6, freq: 1.2, phase: 0 },
-      { x: 1.5, y: 0, amp: 0.6, freq: 1.2, phase: 0 },
-      3.0
-    )
-  );
+
+  const waveSpeed = 3.0; // m/s
+  const lambda = waveSpeed / frequency;
+
+  // Pure synchronous derived probe result
+  const probeResult = useMemo(() => {
+    const s1 = { x: -sourceDistance / 2, y: 0, amp: amplitude, freq: frequency, phase: 0 };
+    const s2 = {
+      x: sourceDistance / 2,
+      y: 0,
+      amp: amplitude,
+      freq: frequency,
+      phase: (phaseDiffDeg * Math.PI) / 180,
+    };
+    return calculateInterferenceAt(probePos.x, probePos.y, clock.time, s1, s2, waveSpeed);
+  }, [probePos.x, probePos.y, clock.time, sourceDistance, amplitude, frequency, phaseDiffDeg]);
 
   // Three.js mutable refs
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -64,39 +73,28 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
   const isDraggingRef = useRef<boolean>(false);
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const waveSpeed = 3.0; // m/s
-  const lambda = waveSpeed / frequency;
-
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
   // Update telemetry
   useEffect(() => {
-    const s1 = { x: -sourceDistance / 2, y: 0, amp: amplitude, freq: frequency, phase: 0 };
-    const s2 = {
-      x: sourceDistance / 2,
-      y: 0,
-      amp: amplitude,
-      freq: frequency,
-      phase: (phaseDiffDeg * Math.PI) / 180,
-    };
-
-    const res = calculateInterferenceAt(probePos.x, probePos.y, clock.time, s1, s2, waveSpeed);
-    setProbeResult(res);
-
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
       const newPt: DataPoint = {
         t: clock.time,
-        y1: res.y1,
-        y2: res.y2,
-        yRes: res.yRes,
+        y1: probeResult.y1,
+        y2: probeResult.y2,
+        yRes: probeResult.yRes,
       };
       const updated = [...prev, newPt];
       return updated.length > 300 ? updated.slice(-300) : updated;
     });
-  }, [clock.time, sourceDistance, frequency, amplitude, phaseDiffDeg, probePos, waveSpeed]);
+  }, [clock.time, probeResult]);
 
   // Setup Three.js scene
   useEffect(() => {
@@ -242,9 +240,10 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
 
@@ -263,7 +262,7 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
         }
       }
 
-      const t = clock.time;
+      const t = timeRef.current;
       const s1X = -sourceDistance / 2;
       const s2X = sourceDistance / 2;
       const s1Phase = 0;
@@ -318,7 +317,7 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, sourceDistance, amplitude, frequency, phaseDiffDeg, lambda, probePos]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, sourceDistance, amplitude, frequency, phaseDiffDeg, lambda, probePos.x, probePos.y]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'y1', label: 'Onda Fonte 1 (y₁)', color: '#38bdf8', unit: 'm' },
@@ -519,7 +518,10 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

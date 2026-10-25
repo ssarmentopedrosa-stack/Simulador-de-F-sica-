@@ -12,6 +12,21 @@ export type ModuleId =
   | 'doppler'
   | 'phenomena';
 
+export const VALID_MODULE_IDS: readonly ModuleId[] = [
+  'shm',
+  'spring_mass',
+  'pendulum',
+  'waves',
+  'interference',
+  'standing_waves',
+  'doppler',
+  'phenomena',
+] as const;
+
+export function isValidModuleId(id: unknown): id is ModuleId {
+  return typeof id === 'string' && (VALID_MODULE_IDS as readonly string[]).includes(id);
+}
+
 export type ModuleCategory =
   | 'oscillations'
   | 'mechanical_waves'

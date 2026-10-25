@@ -37,6 +37,9 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
     showGraphs: true,
   });
 
+  const timeRef = useRef<number>(0);
+  timeRef.current = clock.time;
+
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
 
   // Three.js mutable refs
@@ -64,20 +67,23 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
   const omegaWave = 2 * Math.PI * frequency;
 
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
   // Update telemetry
   useEffect(() => {
-    const pt = calculateWavePoint(trackedPointX, clock.time, {
-      amplitude,
-      frequency,
-      wavelength,
-      initialPhase: 0,
-    });
-
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
+      const pt = calculateWavePoint(trackedPointX, clock.time, {
+        amplitude,
+        frequency,
+        wavelength,
+        initialPhase: 0,
+      });
       const newPt: DataPoint = {
         t: clock.time,
         yPoint: pt.y,
@@ -259,9 +265,10 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
 
@@ -280,7 +287,7 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
         }
       }
 
-      const t = clock.time;
+      const t = timeRef.current;
 
       // 1. Transverse Mode Animation (in-place buffer update, 0 memory churn)
       if (ropeMeshRef.current && waveMode === 'transverse' && ropeMeshRef.current.geometry) {
@@ -352,7 +359,7 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, waveMode, amplitude, kWave, omegaWave, trackedPointX]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, waveMode, amplitude, kWave, omegaWave, trackedPointX]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'yPoint', label: 'Elongação do Ponto P y(t)', color: '#38bdf8', unit: 'm' },
@@ -562,7 +569,10 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { calculateStandingWave, BoundaryCondition, StandingWaveInfo } from '../../physics/math';
+import { calculateStandingWave, BoundaryCondition } from '../../physics/math';
 import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../../types/physics';
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
@@ -34,9 +34,15 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
     showGraphs: true,
   });
 
+  const timeRef = useRef<number>(0);
+  timeRef.current = clock.time;
+
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
-  const [waveInfo, setWaveInfo] = useState<StandingWaveInfo>(() =>
-    calculateStandingWave(3.0, 60.0, 3, 'both_fixed')
+
+  // Synchronous pure derived state
+  const waveInfo = useMemo(
+    () => calculateStandingWave(length, waveSpeed, harmonic, boundary),
+    [length, waveSpeed, harmonic, boundary]
   );
 
   // Three.js mutable refs
@@ -58,22 +64,22 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
-  // Update standing wave model
+  // Update standing wave telemetry
   useEffect(() => {
-    const info = calculateStandingWave(length, waveSpeed, harmonic, boundary);
-    setWaveInfo(info);
-
-    // Midpoint observation
-    const midX = length / 2;
-    const k = (2 * Math.PI) / info.wavelength;
-    const omega = 2 * Math.PI * info.frequency;
-    const yMid = 2 * amplitude * Math.sin(k * midX) * Math.cos(omega * clock.time);
-
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
+      const midX = length / 2;
+      const k = (2 * Math.PI) / waveInfo.wavelength;
+      const omega = 2 * Math.PI * waveInfo.frequency;
+      const yMid = 2 * amplitude * Math.sin(k * midX) * Math.cos(omega * clock.time);
+
       const newPt: DataPoint = {
         t: clock.time,
         yMid,
@@ -81,7 +87,7 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
       const updated = [...prev, newPt];
       return updated.length > 300 ? updated.slice(-300) : updated;
     });
-  }, [length, waveSpeed, harmonic, boundary, clock.time, amplitude]);
+  }, [length, waveInfo, clock.time, amplitude]);
 
   // Setup Three.js Scene
   useEffect(() => {
@@ -252,9 +258,10 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
 
@@ -273,7 +280,7 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
         }
       }
 
-      const t = clock.time;
+      const t = timeRef.current;
       const info = calculateStandingWave(length, waveSpeed, harmonic, boundary);
       const k = (2 * Math.PI) / info.wavelength;
       const omega = 2 * Math.PI * info.frequency;
@@ -330,7 +337,7 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, length, waveSpeed, harmonic, boundary, amplitude]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, length, waveSpeed, harmonic, boundary, amplitude]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'yMid', label: 'Deslocamento no Ponto Médio y(L/2, t)', color: '#38bdf8', unit: 'm' },
@@ -534,7 +541,10 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({ onOpenExperime
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

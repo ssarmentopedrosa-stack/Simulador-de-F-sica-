@@ -114,7 +114,7 @@ src/
 │   │   ├── EnemBankModal.tsx  # Banco de questões ENEM com resoluções comentadas
 │   │   ├── ExperimentModal.tsx# Laboratório guiado em 4 etapas (hipótese, teste, análise, conclusão)
 │   │   ├── TeacherModeModal.tsx # Modo projetor para sala de aula com perguntas disparadoras
-│   │   └── TestRunnerModal.tsx# Executador visual in-app dos 22 testes físicos
+│   │   └── TestRunnerModal.tsx# Executador visual in-app dos 26 testes físicos
 │   └── simulations/           # Cenas 3D interativas em Three.js
 │       ├── SHM3D.tsx
 │       ├── SpringMass3D.tsx
@@ -130,7 +130,7 @@ src/
 │   └── modules.ts            # Metadados e ementa dos 8 módulos
 ├── physics/
 │   ├── math.ts               # Motor de cálculo analítico e integradores numéricos
-│   └── tests.ts              # Suite executável de 22 testes físicos
+│   └── tests.ts              # Suite executável de 26 testes físicos
 └── types/
     └── physics.ts            # Interfaces TypeScript rigorosas
 ```

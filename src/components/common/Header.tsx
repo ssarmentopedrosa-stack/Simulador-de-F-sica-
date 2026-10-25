@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="hidden lg:flex items-center gap-4 text-xs font-medium text-slate-300">
         <button
           onClick={() => onSelectModule('home')}
-          className={`hover:text-white transition-colors whitespace-nowrap ${
+          className={`hover:text-white transition-colors whitespace-nowrap cursor-pointer ${
             currentModuleId === 'home' ? 'text-cyan-400 font-semibold' : 'text-slate-400'
           }`}
         >
@@ -69,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 key={mod.id}
                 onClick={() => onSelectModule(mod.id)}
-                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between ${
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer ${
                   currentModuleId === mod.id
                     ? 'bg-cyan-950/60 text-cyan-300 font-medium'
                     : 'text-slate-300 hover:bg-slate-800'
@@ -88,33 +88,53 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
+      {/* Mobile/Tablet Compact Selector */}
+      <div className="flex lg:hidden items-center">
+        <select
+          value={currentModuleId}
+          onChange={(e) => onSelectModule(e.target.value as ModuleId | 'home')}
+          className="bg-slate-900 border border-slate-800 text-xs text-cyan-400 rounded px-2 py-1 max-w-[130px] sm:max-w-[170px] truncate focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
+        >
+          <option value="home">Visão Geral</option>
+          {MODULES.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.title}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Zone 3: Actions (Teacher Mode, ENEM, Tests) */}
       <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={onOpenEnemBank}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-900/50 transition-colors whitespace-nowrap"
-          title="Banco de Questões e Desafios no Padrão ENEM"
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-900/50 transition-colors whitespace-nowrap cursor-pointer"
+          title="Banco de Questões ENEM (Atalho: E)"
         >
           <Award className="w-3.5 h-3.5" />
-          <span>Banco ENEM</span>
+          <span>ENEM</span>
+          <kbd className="hidden md:inline text-[9px] bg-slate-950 px-1 rounded text-slate-500 border border-slate-800">E</kbd>
         </button>
 
         <button
           onClick={onOpenTestRunner}
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/50 transition-colors whitespace-nowrap"
-          title="Verificação de Modelos Matemáticos e Invariantes Físicas"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/50 transition-colors whitespace-nowrap cursor-pointer"
+          title="Verificação de Modelos Matemáticos e Invariantes Físicas (Atalho: T)"
         >
           <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Testes Físicos</span>
+          <span>Testes</span>
+          <kbd className="hidden md:inline text-[9px] bg-slate-950 px-1 rounded text-slate-500 border border-slate-800">T</kbd>
         </button>
 
         <button
           onClick={onOpenTeacherMode}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-sm transition-all whitespace-nowrap"
-          title="Modo Apresentação para Sala de Aula e Projetores"
+          className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-sm transition-all whitespace-nowrap cursor-pointer"
+          title="Modo Apresentação para Sala de Aula e Projetores (Atalho: P)"
         >
           <Presentation className="w-3.5 h-3.5" />
-          <span>Modo Professor</span>
+          <span className="hidden sm:inline">Modo Professor</span>
+          <span className="sm:hidden">Professor</span>
+          <kbd className="hidden md:inline text-[9px] bg-blue-950/80 px-1 rounded text-blue-200 border border-blue-400/40">P</kbd>
         </button>
       </div>
     </header>

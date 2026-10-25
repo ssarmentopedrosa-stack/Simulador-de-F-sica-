@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { calculateSHM, SHMState } from '../../physics/math';
+import { calculateSHM } from '../../physics/math';
 import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../../types/physics';
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
@@ -35,9 +35,18 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
     showGraphs: true,
   });
 
+  const timeRef = useRef<number>(0);
+  timeRef.current = clock.time;
+
   // Telemetry buffer for charts
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
-  const [currentState, setCurrentState] = useState<SHMState>(() => calculateSHM(0, 1.2, 0.8, 0));
+
+  // Synchronous pure derived state
+  const phiRad = (initialPhaseDeg * Math.PI) / 180;
+  const currentState = useMemo(
+    () => calculateSHM(clock.time, amplitude, frequency, phiRad),
+    [clock.time, amplitude, frequency, phiRad]
+  );
 
   // Mutable refs for Three.js render loop
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -60,31 +69,30 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
 
   // Reset simulation
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
-  // Update physical calculations
+  // Synchronize telemetry buffer on tick
   useEffect(() => {
-    const phiRad = (initialPhaseDeg * Math.PI) / 180;
-    const st = calculateSHM(clock.time, amplitude, frequency, phiRad);
-    setCurrentState(st);
-
-    // Append to chart buffer
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
       const phi2Rad = ((initialPhaseDeg + phaseDiffDeg) * Math.PI) / 180;
       const st2 = calculateSHM(clock.time, amplitude, frequency, phi2Rad);
       const newPt: DataPoint = {
         t: clock.time,
-        x: st.x,
-        v: st.v,
-        a: st.a,
+        x: currentState.x,
+        v: currentState.v,
+        a: currentState.a,
         x2: st2.x,
       };
       const updated = [...prev, newPt];
       return updated.length > 300 ? updated.slice(-300) : updated;
     });
-  }, [clock.time, amplitude, frequency, initialPhaseDeg, phaseDiffDeg]);
+  }, [clock.time, amplitude, frequency, initialPhaseDeg, phaseDiffDeg, currentState]);
 
   // Setup Three.js scene
   useEffect(() => {
@@ -327,11 +335,14 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
+
+      const simTime = timeRef.current;
 
       // Update Camera coordinates
       const cam = cameraRef.current;
@@ -350,7 +361,7 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
 
       // Update 3D block positions
       const phiRad = (initialPhaseDeg * Math.PI) / 180;
-      const st = calculateSHM(clock.time, amplitude, frequency, phiRad);
+      const st = calculateSHM(simTime, amplitude, frequency, phiRad);
 
       if (blockMeshRef.current) {
         blockMeshRef.current.position.x = st.x;
@@ -360,7 +371,7 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
         block2MeshRef.current.visible = compareSecond;
         if (compareSecond) {
           const phi2Rad = ((initialPhaseDeg + phaseDiffDeg) * Math.PI) / 180;
-          const st2 = calculateSHM(clock.time, amplitude, frequency, phi2Rad);
+          const st2 = calculateSHM(simTime, amplitude, frequency, phi2Rad);
           block2MeshRef.current.position.x = st2.x;
         }
       }
@@ -368,7 +379,7 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
       // Update Phasor rotation
       if (phasorArmRef.current) {
         phasorArmRef.current.visible = showPhasor;
-        phasorArmRef.current.rotation.y = -(st.omega * clock.time + phiRad);
+        phasorArmRef.current.rotation.y = -(st.omega * simTime + phiRad);
       }
 
       // Update Vectors
@@ -411,7 +422,7 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, clock.showVectors, amplitude, frequency, initialPhaseDeg, compareSecond, phaseDiffDeg, showPhasor]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, clock.showVectors, amplitude, frequency, initialPhaseDeg, compareSecond, phaseDiffDeg, showPhasor]);
 
   // Chart series configuration
   const chartSeries: ChartSeries[] = [
@@ -622,7 +633,10 @@ export const SHM3D: React.FC<SHM3DProps> = ({ onOpenExperiment }) => {
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}
