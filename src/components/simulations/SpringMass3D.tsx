@@ -7,22 +7,79 @@ import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
 import { Sliders, HelpCircle, Activity, ArrowDownUp, MoveHorizontal } from 'lucide-react';
 
+import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
+
 interface SpringMass3DProps {
   onOpenExperiment?: () => void;
+  initialParams?: Record<string, any>;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
-export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) => {
+export const SpringMass3D: React.FC<SpringMass3DProps> = ({
+  onOpenExperiment,
+  initialParams,
+  onParamsChange,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // Physical Parameters
-  const [mass, setMass] = useState<number>(1.5);
-  const [springK, setSpringK] = useState<number>(45.0);
-  const [amplitude, setAmplitude] = useState<number>(1.2);
-  const [dampingCoeff, setDampingCoeff] = useState<number>(0.0);
-  const [isVertical, setIsVertical] = useState<boolean>(false);
+  const [mass, setMass] = useState<number>(
+    () => (initialParams?.mass != null ? Number(initialParams.mass) : 1.5)
+  );
+  const [springK, setSpringK] = useState<number>(
+    () => (initialParams?.springK != null ? Number(initialParams.springK) : 45.0)
+  );
+  const [amplitude, setAmplitude] = useState<number>(
+    () => (initialParams?.amplitude != null ? Number(initialParams.amplitude) : 1.2)
+  );
+  const [dampingCoeff, setDampingCoeff] = useState<number>(
+    () => (initialParams?.dampingCoeff != null ? Number(initialParams.dampingCoeff) : 0.0)
+  );
+  const [isVertical, setIsVertical] = useState<boolean>(
+    () => (initialParams?.isVertical != null ? Boolean(initialParams.isVertical) : false)
+  );
   const [gravity] = useState<number>(9.8);
-  const [externalForceAmp, setExternalForceAmp] = useState<number>(0);
-  const [externalFreq, setExternalFreq] = useState<number>(0.8);
+  const [externalForceAmp, setExternalForceAmp] = useState<number>(
+    () => (initialParams?.externalForceAmp != null ? Number(initialParams.externalForceAmp) : 0)
+  );
+  const [externalFreq, setExternalFreq] = useState<number>(
+    () => (initialParams?.externalFreq != null ? Number(initialParams.externalFreq) : 0.8)
+  );
+  const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
+
+  const applyPreset = useCallback((p: Record<string, any>) => {
+    if (p.mass !== undefined) setMass(Number(p.mass));
+    if (p.springK !== undefined) setSpringK(Number(p.springK));
+    if (p.amplitude !== undefined) setAmplitude(Number(p.amplitude));
+    if (p.dampingCoeff !== undefined) setDampingCoeff(Number(p.dampingCoeff));
+    if (p.isVertical !== undefined) setIsVertical(Boolean(p.isVertical));
+    if (p.externalForceAmp !== undefined) setExternalForceAmp(Number(p.externalForceAmp));
+    if (p.externalFreq !== undefined) setExternalFreq(Number(p.externalFreq));
+  }, []);
+
+  useEffect(() => {
+    onParamsChange?.({
+      mass,
+      springK,
+      amplitude,
+      dampingCoeff,
+      isVertical,
+      externalForceAmp,
+      externalFreq,
+    });
+  }, [mass, springK, amplitude, dampingCoeff, isVertical, externalForceAmp, externalFreq, onParamsChange]);
+
+  useEffect(() => {
+    if (initialParams) {
+      if (initialParams.mass !== undefined) setMass(Number(initialParams.mass));
+      if (initialParams.springK !== undefined) setSpringK(Number(initialParams.springK));
+      if (initialParams.amplitude !== undefined) setAmplitude(Number(initialParams.amplitude));
+      if (initialParams.dampingCoeff !== undefined) setDampingCoeff(Number(initialParams.dampingCoeff));
+      if (initialParams.isVertical !== undefined) setIsVertical(Boolean(initialParams.isVertical));
+      if (initialParams.externalForceAmp !== undefined) setExternalForceAmp(Number(initialParams.externalForceAmp));
+      if (initialParams.externalFreq !== undefined) setExternalFreq(Number(initialParams.externalFreq));
+    }
+  }, [initialParams]);
 
   // Simulation Clock state
   const [clock, setClock] = useState<SimulationClock>({
@@ -162,7 +219,7 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
@@ -540,180 +597,234 @@ export const SpringMass3D: React.FC<SpringMass3DProps> = ({ onOpenExperiment }) 
           </div>
         </div>
 
-        {/* Control Parameters Deck */}
-        <div className="w-full md:w-80 bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[360px] md:max-h-none shrink-0">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros Mecânicos</span>
-            </div>
+        {/* Side Panel: Tabs for Controls and Graphs */}
+        <div className="w-full md:w-96 lg:w-[420px] bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col h-full overflow-hidden shrink-0">
+          <div className="flex items-center p-2.5 border-b border-slate-800 bg-slate-950/60 gap-1.5 shrink-0">
+            <button
+              onClick={() => setActiveSideTab('controls')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'controls'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Parâmetros</span>
+            </button>
+            <button
+              onClick={() => setActiveSideTab('graphs')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'graphs'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Gráficos em Tempo Real</span>
+            </button>
           </div>
 
-          {/* Orientation Toggle: Horizontal vs Vertical */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-slate-400">Orientação do Experimento:</span>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => setIsVertical(false)}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors border ${
-                  !isVertical
-                    ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <MoveHorizontal className="w-3.5 h-3.5" />
-                <span>Horizontal</span>
-              </button>
-              <button
-                onClick={() => setIsVertical(true)}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors border ${
-                  isVertical
-                    ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <ArrowDownUp className="w-3.5 h-3.5" />
-                <span>Vertical</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Mass Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Massa (m):</span>
-              <span className="font-mono text-cyan-400 font-medium">{mass.toFixed(2)} kg</span>
-            </div>
-            <input
-              type="range"
-              min="0.2"
-              max="5.0"
-              step="0.1"
-              value={mass}
-              onChange={(e) => setMass(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Spring Constant k */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Constante da Mola (k):</span>
-              <span className="font-mono text-cyan-400 font-medium">{springK.toFixed(1)} N/m</span>
-            </div>
-            <input
-              type="range"
-              min="5"
-              max="120"
-              step="2"
-              value={springK}
-              onChange={(e) => setSpringK(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Initial Amplitude */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Elongação Inicial (A = x₀):</span>
-              <span className="font-mono text-cyan-400 font-medium">{amplitude.toFixed(2)} m</span>
-            </div>
-            <input
-              type="range"
-              min="0.2"
-              max="2.0"
-              step="0.05"
-              value={amplitude}
-              onChange={(e) => setAmplitude(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Damping Coefficient */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Amortecimento Viscoso (b):</span>
-              <span className="font-mono text-amber-400 font-medium">{dampingCoeff.toFixed(2)} N·s/m</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="16.0"
-              step="0.2"
-              value={dampingCoeff}
-              onChange={(e) => setDampingCoeff(parseFloat(e.target.value))}
-              className="w-full accent-amber-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-            <div className="text-[10px] text-slate-500 flex justify-between">
-              <span>Crítico em b = {(2 * Math.sqrt(springK * mass)).toFixed(2)}</span>
-              <span className="font-mono text-cyan-400 font-semibold">{regimeLabel}</span>
-            </div>
-          </div>
-
-          {/* External Periodic Force (Resonance Demonstration) */}
-          <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-rose-300 font-medium flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5" />
-                Força Forçada F₀ cos(ω_e t):
-              </span>
-              <input
-                type="checkbox"
-                checked={externalForceAmp > 0}
-                onChange={(e) => setExternalForceAmp(e.target.checked ? 10 : 0)}
-                className="rounded accent-rose-500 cursor-pointer"
+          {/* Tab 1: Parameters */}
+          {activeSideTab === 'controls' && (
+            <div className="p-3.5 flex flex-col gap-3.5 overflow-y-auto flex-1">
+              {/* Classic Didactic Presets Bar */}
+              <ClassicPresetsBar
+                moduleId="spring_mass"
+                onApplyPreset={applyPreset}
+                currentParams={{
+                  mass,
+                  springK,
+                  amplitude,
+                  dampingCoeff,
+                  isVertical,
+                  externalForceAmp,
+                  externalFreq,
+                }}
               />
-            </div>
 
-            {externalForceAmp > 0 && (
-              <div className="flex flex-col gap-2 bg-rose-950/20 p-2 rounded border border-rose-900/40">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Freq. Externa (f_ext):</span>
-                    <span className="font-mono text-rose-400">{externalFreq.toFixed(2)} Hz</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.2"
-                    max="2.5"
-                    step="0.05"
-                    value={externalFreq}
-                    onChange={(e) => setExternalFreq(parseFloat(e.target.value))}
-                    className="w-full accent-rose-500 h-1 bg-slate-800 rounded cursor-pointer"
-                  />
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  Ressonância em f_ext ≈ {(currentState.naturalFreq / (2 * Math.PI)).toFixed(2)} Hz
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros Mecânicos</span>
+                <span className="text-[10px] text-cyan-400 font-mono">3D Dinâmico</span>
+              </div>
+
+              {/* Orientation Toggle: Horizontal vs Vertical */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-slate-400">Orientação do Experimento:</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => setIsVertical(false)}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors border cursor-pointer ${
+                      !isVertical
+                        ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <MoveHorizontal className="w-3.5 h-3.5" />
+                    <span>Horizontal</span>
+                  </button>
+                  <button
+                    onClick={() => setIsVertical(true)}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors border cursor-pointer ${
+                      isVertical
+                        ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ArrowDownUp className="w-3.5 h-3.5" />
+                    <span>Vertical</span>
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Formulas */}
-          {clock.showFormulas && (
-            <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações Governantes</span>
-              <KaTeXMath math="F_{\text{el}} = -kx" block />
-              <KaTeXMath math="T_0 = 2\pi\sqrt{\frac{m}{k}}" block />
-              {isVertical && <KaTeXMath math="\Delta y_0 = \frac{mg}{k}" block />}
-              <KaTeXMath math="E_m = \frac{1}{2}mv^2 + \frac{1}{2}kx^2" block />
+              {/* Mass Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Massa (m):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{mass.toFixed(2)} kg</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="5.0"
+                  step="0.1"
+                  value={mass}
+                  onChange={(e) => setMass(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Spring Constant k */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Constante da Mola (k):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{springK.toFixed(1)} N/m</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="120"
+                  step="2"
+                  value={springK}
+                  onChange={(e) => setSpringK(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Initial Amplitude */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Elongação Inicial (A = x₀):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{amplitude.toFixed(2)} m</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2.0"
+                  step="0.05"
+                  value={amplitude}
+                  onChange={(e) => setAmplitude(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Damping Coefficient */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Amortecimento Viscoso (b):</span>
+                  <span className="font-mono text-amber-400 font-medium">{dampingCoeff.toFixed(2)} N·s/m</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="16.0"
+                  step="0.2"
+                  value={dampingCoeff}
+                  onChange={(e) => setDampingCoeff(parseFloat(e.target.value))}
+                  className="w-full accent-amber-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+                <div className="text-[10px] text-slate-500 flex justify-between">
+                  <span>Crítico em b = {(2 * Math.sqrt(springK * mass)).toFixed(2)}</span>
+                  <span className="font-mono text-cyan-400 font-semibold">{regimeLabel}</span>
+                </div>
+              </div>
+
+              {/* External Periodic Force (Resonance Demonstration) */}
+              <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-rose-300 font-medium flex items-center gap-1">
+                    <Activity className="w-3.5 h-3.5" />
+                    Força Forçada F₀ cos(ω_e t):
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={externalForceAmp > 0}
+                    onChange={(e) => setExternalForceAmp(e.target.checked ? 10 : 0)}
+                    className="rounded accent-rose-500 cursor-pointer"
+                  />
+                </div>
+
+                {externalForceAmp > 0 && (
+                  <div className="flex flex-col gap-2 bg-rose-950/20 p-2 rounded border border-rose-900/40">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Freq. Externa (f_ext):</span>
+                        <span className="font-mono text-rose-400">{externalFreq.toFixed(2)} Hz</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.2"
+                        max="2.5"
+                        step="0.05"
+                        value={externalFreq}
+                        onChange={(e) => setExternalFreq(parseFloat(e.target.value))}
+                        className="w-full accent-rose-500 h-1 bg-slate-800 rounded cursor-pointer"
+                      />
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Ressonância em f_ext ≈ {(currentState.naturalFreq / (2 * Math.PI)).toFixed(2)} Hz
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Formulas */}
+              {clock.showFormulas && (
+                <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações Governantes</span>
+                  <KaTeXMath math="F_{\text{el}} = -kx" block />
+                  <KaTeXMath math="T_0 = 2\pi\sqrt{\frac{m}{k}}" block />
+                  {isVertical && <KaTeXMath math="\Delta y_0 = \frac{mg}{k}" block />}
+                  <KaTeXMath math="E_m = \frac{1}{2}mv^2 + \frac{1}{2}kx^2" block />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Graphs */}
+          {activeSideTab === 'graphs' && (
+            <div className="p-3.5 flex flex-col gap-3 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">Energias & Posição</span>
+                <span className="text-[10px] font-mono text-cyan-400">Tempo Real</span>
+              </div>
+
+              <ScientificChart
+                data={dataBuffer}
+                series={chartSeries}
+                currentTime={clock.time}
+                height={260}
+                title="Evolução Temporal e Conservação da Energia Mecânica"
+              />
+
+              <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-800/80 flex flex-col gap-1">
+                <span className="font-semibold text-slate-300">Oscilações & Energias:</span>
+                <span>• Na ausência de amortecimento (b = 0), a energia mecânica total permanece rigorosamente conservada.</span>
+                <span>• Com b &gt; 0, a amplitude e a energia decaem exponencialmente no tempo.</span>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Scientific Chart */}
-      {clock.showGraphs && (
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950">
-          <ScientificChart
-            data={dataBuffer}
-            series={chartSeries}
-            currentTime={clock.time}
-            height={140}
-            title="Evolução Temporal e Conservação da Energia Mecânica"
-          />
-        </div>
-      )}
 
       {/* Transport Bar */}
       <div className="p-3 bg-slate-950 border-t border-slate-800/80">

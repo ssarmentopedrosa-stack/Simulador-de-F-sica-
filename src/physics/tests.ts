@@ -15,8 +15,32 @@ import {
   calculateRefraction,
   completeEllipticK,
   singleSlitDiffractionIntensity,
+  calculateWorkAndPower,
+  calculateRollerCoasterState,
+  calculateImpulseCollision,
+  calculateCollision1D,
+  calculateCollision2D,
+  calculateDensityAndPressure,
+  calculateStevinPressure,
+  calculateUTubeEquilibrium,
+  calculateHydraulicPress,
+  calculateBuoyancyState,
+  calculateIdealGasState,
+  calculateGasTransformation,
+  calculateFirstLaw,
+  calculateCarnotCycle,
+  calculateCalorimetryEquilibrium,
+  calculateCoulombLaw,
+  calculateElectricFieldAtPoint,
+  calculateElectricWork,
+  calculateParallelPlateCapacitor,
+  COULOMB_CONSTANT_K,
+  VACUUM_PERMITTIVITY_EPSILON_0,
 } from './math';
 import { AutomatedTestResult, isValidModuleId } from '../types/physics';
+import { serializeLabUrlState, parseLabUrlState } from './urlState';
+
+
 
 export function runAllPhysicsTests(): AutomatedTestResult[] {
   const results: AutomatedTestResult[] = [];
@@ -734,8 +758,1058 @@ export function runAllPhysicsTests(): AutomatedTestResult[] {
     addTest('test_damped_vs_undamped_energy_dynamics', 'Dinâmica Comparativa de Energia', 'Massa-Mola', 'Erro', false, 'Válido', String(err));
   }
 
+  // Test 27: Teorema da Energia Cinética (Trabalho Resultante = ΔEc)
+  try {
+    const F = 60; // N
+    const d = 15; // m
+    const theta = 30; // graus
+    const m = 5; // kg
+    const mu = 0.15;
+    const v0 = 2.0; // m/s
+    const wp = calculateWorkAndPower(F, d, theta, m, mu, v0);
+
+    const initialEc = 0.5 * m * v0 * v0;
+    const finalEc = 0.5 * m * wp.finalVelocity * wp.finalVelocity;
+    const deltaEc = finalEc - initialEc;
+
+    const diff = Math.abs(wp.workNet - deltaEc);
+    const passed = diff < 1e-9;
+    addTest(
+      'test_work_energy_theorem',
+      'Teorema da Energia Cinética (W_res = ΔEc)',
+      'Trabalho e Potência',
+      'Valida que o trabalho resultante de todas as forças equivale rigorosamente à variação da energia cinética.',
+      passed,
+      `W_res = ${wp.workNet.toFixed(4)} J`,
+      `ΔEc = ${deltaEc.toFixed(4)} J`,
+      '< 1e-9 J',
+      `F_paralela = ${wp.forceParallel.toFixed(2)} N, f_at = ${wp.frictionForce.toFixed(2)} N, W_net = ${wp.workNet.toFixed(2)} J.`
+    );
+  } catch (err) {
+    addTest('test_work_energy_theorem', 'Teorema da Energia Cinética', 'Trabalho e Potência', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 28: Potência Média e Instantânea
+  try {
+    const F = 100; // N
+    const d = 20; // m
+    const theta = 0; // paralelo
+    const m = 10; // kg
+    const mu = 0; // sem atrito
+    const v0 = 0;
+    const wp = calculateWorkAndPower(F, d, theta, m, mu, v0);
+
+    // a = F/m = 10 m/s^2, vf = sqrt(2*a*d) = 20 m/s, t = vf/a = 2.0 s
+    // W = F*d = 2000 J => P_avg = W/t = 1000 W
+    // P_inst_final = F * vf = 100 * 20 = 2000 W (= 2 * P_avg sob aceleração constante)
+    const expectedPavg = 1000;
+    const expectedPfinal = 2000;
+    const passed = Math.abs(wp.averagePower - expectedPavg) < 1e-6 && Math.abs(wp.instantaneousPowerFinal - expectedPfinal) < 1e-6;
+
+    addTest(
+      'test_power_average_and_instantaneous',
+      'Relação de Potência Média e Instantânea (P_méd e P_inst = F · v)',
+      'Trabalho e Potência',
+      'Comprova que para força constante a partir do repouso, P_inst(t) cresce linearmente e P_final = 2 · P_méd.',
+      passed,
+      `P_méd = ${expectedPavg} W | P_final = ${expectedPfinal} W`,
+      `P_méd = ${wp.averagePower.toFixed(2)} W | P_final = ${wp.instantaneousPowerFinal.toFixed(2)} W`,
+      '< 1e-6 W',
+      `Trabalho W = ${wp.workApplied.toFixed(1)} J em tempo t = ${wp.timeToComplete.toFixed(2)} s.`
+    );
+  } catch (err) {
+    addTest('test_power_average_and_instantaneous', 'Relação de Potência', 'Trabalho e Potência', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 29: Conservação da Energia Mecânica em Rampa/Montanha-Russa sem atrito
+  try {
+    const h0 = 10.0; // m
+    const m = 2.0; // kg
+    const g = 9.8; // m/s^2
+    const mu = 0.0; // conservativo
+    const initialEnergy = m * g * h0;
+
+    // Amostrar em 10 pontos ao longo do trilho
+    let maxEnergyDeviation = 0;
+    for (let u = 0; u <= 1.0; u += 0.1) {
+      const state = calculateRollerCoasterState(u, h0, m, mu, g, 2.5);
+      const Em = state.kineticEnergy + state.potentialEnergy;
+      const dev = Math.abs(Em - initialEnergy);
+      if (dev > maxEnergyDeviation) maxEnergyDeviation = dev;
+    }
+
+    const passed = maxEnergyDeviation < 1e-7;
+    addTest(
+      'test_mechanical_energy_conservation_track',
+      'Conservação da Energia Mecânica na Montanha-Russa (Em = Ec + Ep = cte)',
+      'Conservação da Energia',
+      'Confirma que na ausência de forças dissipativas, a soma Ec + Ep permanece constante em cada ponto do trajeto.',
+      passed,
+      `Em = ${initialEnergy.toFixed(4)} J constante`,
+      `Desvio máximo = ${maxEnergyDeviation.toExponential(2)} J`,
+      '< 1e-7 J',
+      `Energia mecânica inicial m·g·h0 = ${initialEnergy.toFixed(2)} J preservada ao longo de todo o trilho 3D.`
+    );
+  } catch (err) {
+    addTest('test_mechanical_energy_conservation_track', 'Conservação de Energia', 'Conservação da Energia', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 30: Condição de Looping sem Perda de Contato (h >= 2,5 R)
+  try {
+    const R = 3.0; // m
+    const m = 1.5; // kg
+    const g = 9.8; // m/s^2
+
+    // Caso 1: Altura crítica teórica exata h_crit = 2.5 * R
+    const hCrit = 2.5 * R;
+    const stateAtTopCrit = calculateRollerCoasterState(0.525, hCrit, m, 0.0, g, R);
+
+    // Caso 2: Altura insuficiente h = 2.0 * R (não atinge velocidade mínima v_top = sqrt(g*R))
+    const hSub = 2.0 * R;
+    const stateAtTopSub = calculateRollerCoasterState(0.525, hSub, m, 0.0, g, R);
+
+    const passed = stateAtTopCrit.loopSafe === true && stateAtTopSub.loopSafe === false;
+    addTest(
+      'test_loop_minimum_height_criterion',
+      'Critério de Não-Descolamento no Ápice do Looping (h_mín = 2,5 R)',
+      'Conservação da Energia',
+      'Valida que a força normal N >= 0 no topo do looping exige altura de largada h >= 2,5 R na ausência de atrito.',
+      passed,
+      'h = 2.5R -> loopSafe=true | h = 2.0R -> loopSafe=false',
+      `h=7.5m -> safe=${stateAtTopCrit.loopSafe} | h=6.0m -> safe=${stateAtTopSub.loopSafe}`,
+      'Exato',
+      `Velocidade crítica exigida no topo: v_min = √(g·R) = ${(Math.sqrt(g * R)).toFixed(2)} m/s.`
+    );
+  } catch (err) {
+    addTest('test_loop_minimum_height_criterion', 'Critério de Looping', 'Conservação da Energia', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 31: Teorema do Impulso (I = Δp)
+  try {
+    const m = 1200; // kg (veículo)
+    const v0 = 20; // m/s (72 km/h)
+    const crashAirbag = calculateImpulseCollision(m, v0, 'airbag');
+
+    // Integral numérica do pulso senoidal de força
+    let integratedImpulse = 0;
+    const steps = 1000;
+    const dt = crashAirbag.duration / steps;
+    for (let step = 0; step < steps; step++) {
+      const t = (step + 0.5) * dt;
+      integratedImpulse += crashAirbag.forceAtTime(t) * dt;
+    }
+
+    const expectedDeltaP = m * v0;
+    const diff = Math.abs(integratedImpulse - expectedDeltaP);
+    const passed = diff / expectedDeltaP < 0.001;
+
+    addTest(
+      'test_impulse_momentum_theorem',
+      'Teorema do Impulso (I = ∫ F dt = Δp)',
+      'Impulso e Momento',
+      'Valida que a integral no tempo da força de impacto reproduz exatamente a variação total da quantidade de movimento.',
+      passed,
+      `I = ${expectedDeltaP.toFixed(1)} N·s`,
+      `∫ F dt = ${integratedImpulse.toFixed(1)} N·s`,
+      '< 0.1%',
+      `Massa ${m} kg parada de ${v0} m/s; impulso total = ${(expectedDeltaP / 1000).toFixed(1)} kN·s.`
+    );
+  } catch (err) {
+    addTest('test_impulse_momentum_theorem', 'Teorema do Impulso', 'Impulso e Momento', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 32: Eficácia do Airbag vs Parede Rígida (Atenuação de Força de Pico)
+  try {
+    const m = 80; // kg (ocupante / passageiro)
+    const v0 = 15; // m/s (~54 km/h)
+    const airbag = calculateImpulseCollision(m, v0, 'airbag');
+    const rigid = calculateImpulseCollision(m, v0, 'rigid_wall');
+
+    // Airbag estende o tempo de interação em ~10x, reduzindo a força de pico proporcionalmente
+    const forceRatio = rigid.peakForce / airbag.peakForce;
+    const passed = forceRatio > 8.0 && Math.abs(airbag.impulse - rigid.impulse) < 1e-9;
+
+    addTest(
+      'test_airbag_cushioning_factor',
+      'Atenuação Biomecânica da Força de Pico (Airbag vs Barreira Rígida)',
+      'Impulso e Momento',
+      'Demonstra que o mesmo impulso Δp distribuído em tempo ~10x maior atenua a força letal sobre o corpo humano.',
+      passed,
+      'Mesmo Δp com Razão de Forças F_rígida / F_airbag > 8.0',
+      `F_rígida = ${(rigid.peakForce / 1000).toFixed(1)} kN (${rigid.peakGForce.toFixed(0)}g) vs F_airbag = ${(airbag.peakForce / 1000).toFixed(1)} kN (${airbag.peakGForce.toFixed(0)}g) [Razão: ${forceRatio.toFixed(1)}x]`,
+      'Fator > 8x',
+      `Duração: Airbag ${(airbag.duration * 1000).toFixed(0)} ms vs Rígido ${(rigid.duration * 1000).toFixed(0)} ms.`
+    );
+  } catch (err) {
+    addTest('test_airbag_cushioning_factor', 'Atenuação de Força', 'Impulso e Momento', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 33: Conservação do Momento Linear 1D em Todos os Regimes
+  try {
+    const m1 = 4.0;
+    const m2 = 2.0;
+    const v1i = 6.0;
+    const v2i = -3.0;
+
+    // Testar e = 1.0 (elástica), e = 0.5 (parcial), e = 0.0 (inelástica)
+    const colElastic = calculateCollision1D(m1, m2, v1i, v2i, 1.0);
+    const colPartial = calculateCollision1D(m1, m2, v1i, v2i, 0.5);
+    const colInelastic = calculateCollision1D(m1, m2, v1i, v2i, 0.0);
+
+    const initialP = m1 * v1i + m2 * v2i; // 4*6 + 2*(-3) = 18 kg*m/s
+    const diffElastic = Math.abs(colElastic.finalMomentum - initialP);
+    const diffPartial = Math.abs(colPartial.finalMomentum - initialP);
+    const diffInelastic = Math.abs(colInelastic.finalMomentum - initialP);
+
+    const passed = diffElastic < 1e-10 && diffPartial < 1e-10 && diffInelastic < 1e-10;
+    addTest(
+      'test_momentum_conservation_all_restitutions',
+      'Conservação Estrita do Momento Linear 1D (p_antes = p_depois)',
+      'Colisões 1D e 2D',
+      'Confirma que o momento linear total é rigorosamente invariante independentemente da dissipação de energia mecânica.',
+      passed,
+      `p_total = ${initialP.toFixed(4)} kg·m/s`,
+      `Elástica: ${colElastic.finalMomentum.toFixed(4)} | Parcial: ${colPartial.finalMomentum.toFixed(4)} | Inelástica: ${colInelastic.finalMomentum.toFixed(4)}`,
+      '< 1e-10 kg·m/s',
+      `O momento linear do sistema isolado independe do coeficiente de restituição e.`
+    );
+  } catch (err) {
+    addTest('test_momentum_conservation_all_restitutions', 'Conservação do Momento 1D', 'Colisões 1D e 2D', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 34: Conservação e Dissipação de Energia Cinética em Colisões 1D
+  try {
+    const m1 = 3.0;
+    const m2 = 3.0;
+    const v1i = 5.0;
+    const v2i = 0.0;
+
+    const colElastic = calculateCollision1D(m1, m2, v1i, v2i, 1.0);
+    const colInelastic = calculateCollision1D(m1, m2, v1i, v2i, 0.0);
+
+    // Na elástica, Ec é conservada: ΔEc = 0
+    const elasticEcDiff = Math.abs(colElastic.finalKineticEnergy - colElastic.initialKineticEnergy);
+    // Na inelástica com massas iguais e alvo em repouso, exatamente 50% da Ec é dissipada
+    const inelasticLossRatio = colInelastic.dissipatedEnergy / colInelastic.initialKineticEnergy;
+
+    const passed = elasticEcDiff < 1e-10 && Math.abs(inelasticLossRatio - 0.5) < 1e-10;
+    addTest(
+      'test_collision_kinetic_energy_partition',
+      'Balanço de Energia Cinética: Elástica (ΔEc = 0) vs Inelástica (Perda Máxima)',
+      'Colisões 1D e 2D',
+      'Valida que a energia cinética é conservada em e = 1, e que em e = 0 a perda relativa corresponde a m2/(m1+m2) = 50%.',
+      passed,
+      'Elástica: ΔEc = 0 J | Inelástica: Perda = 50.0%',
+      `Elástica: ΔEc = ${elasticEcDiff.toExponential(2)} J | Inelástica: Perda = ${(inelasticLossRatio * 100).toFixed(1)}%`,
+      '< 1e-10',
+      `Em e=0 os corpos seguem com velocidade comum vf = ${(colInelastic.v1f).toFixed(2)} m/s.`
+    );
+  } catch (err) {
+    addTest('test_collision_kinetic_energy_partition', 'Balanço de Energia em Colisões', 'Colisões 1D e 2D', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 35: Conservação do Momento Linear Vetorial 2D
+  try {
+    const m1 = 2.0;
+    const m2 = 1.5;
+    const v1i = { x: 4.0, y: 0, z: 0 };
+    const v2i = { x: 0.0, y: 0, z: 0 };
+    const impactAngle = 30; // 30 graus
+    const restitution = 0.8;
+
+    const col2D = calculateCollision2D(m1, m2, v1i, v2i, impactAngle, restitution);
+
+    const diffPx = Math.abs(col2D.finalMomentum.x - col2D.initialMomentum.x);
+    const diffPz = Math.abs(col2D.finalMomentum.z - col2D.initialMomentum.z);
+    const maxDiff = Math.max(diffPx, diffPz);
+
+    const passed = maxDiff < 1e-10;
+    addTest(
+      'test_vector_momentum_conservation_2d',
+      'Conservação do Momento Linear Vetorial em 2D (p_x e p_z invariantes)',
+      'Colisões 1D e 2D',
+      'Comprova que em uma colisão bidimensional oblíqua, cada componente cartesiana do momento total é conservada.',
+      passed,
+      `px = ${col2D.initialMomentum.x.toFixed(4)} | pz = 0.0000 kg·m/s`,
+      `px_final = ${col2D.finalMomentum.x.toFixed(4)} | pz_final = ${col2D.finalMomentum.z.toFixed(4)}`,
+      '< 1e-10 kg·m/s',
+      `Ângulo de impacto ${impactAngle}° gera espalhamento angular com conservação vetorial rigorosa.`
+    );
+  } catch (err) {
+    addTest('test_vector_momentum_conservation_2d', 'Conservação do Momento 2D', 'Colisões 1D e 2D', 'Erro', false, 'Válido', String(err));
+  }
+
+  // ==========================================
+  // ÁREA 3: HIDROSTÁTICA (TESTES 36 - 43)
+  // ==========================================
+
+  // Test 36: Densidade e Pressão Mecânica de Contato (P = F / A)
+  try {
+    const mass = 12.0; // kg
+    const vol = 0.004; // m^3 -> rho = 3000 kg/m^3
+    const area = 0.02; // m^2
+    const g = 10.0; // m/s^2 -> F = 120 N -> P = 6000 Pa (6.0 kPa)
+
+    const dp = calculateDensityAndPressure(mass, vol, area, 1000, 1.0, g);
+    const expectedRho = 3000.0;
+    const expectedPressure = 6000.0;
+    const diffRho = Math.abs(dp.density - expectedRho);
+    const diffP = Math.abs(dp.mechanicalPressure - expectedPressure);
+
+    const passed = diffRho < 1e-9 && diffP < 1e-9;
+    addTest(
+      'test_density_and_contact_pressure',
+      'Definição Rigorosa de Densidade e Pressão Mecânica (ρ = m/V e P = F/A)',
+      'Densidade e Pressão',
+      'Valida que a pressão mecânica exercida na base é estritamente proporcional à força peso e inversamente proporcional à área de contato.',
+      passed,
+      `ρ = 3000.0 kg/m³ | P = 6.000 kPa`,
+      `ρ = ${dp.density.toFixed(1)} kg/m³ | P = ${(dp.mechanicalPressureKPa).toFixed(3)} kPa`,
+      '< 1e-9',
+      `Força normal de contato F = ${dp.contactForce.toFixed(1)} N distribuída em ${area} m².`
+    );
+  } catch (err) {
+    addTest('test_density_and_contact_pressure', 'Densidade e Pressão', 'Densidade e Pressão', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 37: Teorema de Stevin (ΔP = ρ·g·Δh e Pressão Absoluta)
+  try {
+    const depth = 20.0; // 20 metros de profundidade em água (1000 kg/m^3)
+    const rhoWater = 1000;
+    const g = 9.8;
+    const pAtm = 101325; // 1 atm
+
+    const stevin = calculateStevinPressure(depth, rhoWater, g, pAtm);
+    const expectedDeltaP = rhoWater * g * depth; // 196,000 Pa
+    const expectedPAbs = pAtm + expectedDeltaP; // 297,325 Pa
+
+    const passed = Math.abs(stevin.deltaP - expectedDeltaP) < 1e-8 && Math.abs(stevin.pAbs - expectedPAbs) < 1e-8;
+    addTest(
+      'test_stevin_hydrostatic_pressure',
+      'Teorema Fundamental de Stevin (ΔP = ρ·g·h e Pressão Absoluta)',
+      'Teorema de Stevin',
+      'Valida que a pressão hidrostática depende exclusivamente da profundidade, densidade e gravidade, somando-se à pressão atmosférica de superfície.',
+      passed,
+      `ΔP = 196.00 kPa | P_abs = 297.33 kPa (${(expectedPAbs / pAtm).toFixed(2)} atm)`,
+      `ΔP = ${(stevin.deltaP / 1000).toFixed(2)} kPa | P_abs = ${(stevin.pAbs / 1000).toFixed(2)} kPa (${stevin.pAbsAtm.toFixed(2)} atm)`,
+      '< 1e-8 Pa',
+      `A cada ~10 m de coluna d\'água, a pressão aumenta em aproximadamente 1 atm.`
+    );
+  } catch (err) {
+    addTest('test_stevin_hydrostatic_pressure', 'Teorema de Stevin', 'Teorema de Stevin', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 38: Tubo em U com Líquidos Imiscíveis (ρ1·h1 = ρ2·h2)
+  try {
+    const rhoWater = 1000; // kg/m^3
+    const hWater = 0.08;   // 8 cm
+    const rhoOil = 800;     // óleo
+
+    const uTube = calculateUTubeEquilibrium(rhoWater, hWater, rhoOil);
+    // hOil = hWater * (rhoWater / rhoOil) = 0.08 * 1.25 = 0.10 m (10 cm)
+    const expectedHOil = 0.10;
+    const passed = Math.abs(uTube.h2 - expectedHOil) < 1e-9;
+
+    addTest(
+      'test_utube_immiscible_liquids',
+      'Equilíbrio em Tubo em U com Líquidos Imiscíveis (ρ₁·h₁ = ρ₂·h₂)',
+      'Teorema de Stevin',
+      'Demonstra que as alturas das colunas acima da superfície de separação são inversamente proporcionais às respectivas densidades.',
+      passed,
+      `h_óleo = 10.00 cm (ρ_óleo = 800 kg/m³, h_água = 8.00 cm)`,
+      `h_óleo = ${(uTube.h2 * 100).toFixed(2)} cm`,
+      '< 1e-9 m',
+      `O líquido menos denso (óleo) requer uma coluna maior (${(uTube.h2 * 100).toFixed(1)} cm) para igualar a pressão.`
+    );
+  } catch (err) {
+    addTest('test_utube_immiscible_liquids', 'Tubo em U', 'Teorema de Stevin', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 39: Princípio de Pascal — Multiplicação de Força (F2 = F1 · A2 / A1)
+  try {
+    const f1 = 150.0; // N
+    const r1 = 0.05;  // 5 cm raio -> A1 = pi * 0.0025
+    const r2 = 0.25;  // 25 cm raio -> A2 = pi * 0.0625 (25x maior)
+    // A2 / A1 = (25/5)^2 = 25
+    // F2 = 150 * 25 = 3750 N
+
+    const press = calculateHydraulicPress(f1, r1, r2, 0.2);
+    const expectedF2 = 3750.0;
+    const expectedRatio = 25.0;
+
+    const passed = Math.abs(press.force2 - expectedF2) < 1e-9 && Math.abs(press.areaRatio - expectedRatio) < 1e-9;
+    addTest(
+      'test_pascal_force_multiplication',
+      'Princípio de Pascal: Multiplicação Hidráulica de Força (F₂/A₂ = F₁/A₁)',
+      'Princípio de Pascal',
+      'Comprova que a pressão aplicada integralmente ao fluido multiplica a força na proporção direta das áreas dos êmbolos.',
+      passed,
+      `Razão de Áreas = 25.00x | Força F₂ = 3750.0 N`,
+      `Razão de Áreas = ${press.areaRatio.toFixed(2)}x | Força F₂ = ${press.force2.toFixed(1)} N`,
+      '< 1e-9 N',
+      `Um operador aplicando 150 N no pistão de entrada é capaz de sustentar 3.750 N (382 kg) no pistão de saída.`
+    );
+  } catch (err) {
+    addTest('test_pascal_force_multiplication', 'Prensa Hidráulica', 'Princípio de Pascal', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 40: Princípio de Pascal — Conservação do Volume e do Trabalho Mecânico (W1 = W2)
+  try {
+    const f1 = 200.0; // N
+    const r1 = 0.04;
+    const r2 = 0.16; // ratio = 16x
+    const d1 = 0.40; // 40 cm deslocamento
+
+    const press = calculateHydraulicPress(f1, r1, r2, d1);
+    // W1 = 200 * 0.40 = 80 J
+    // d2 = 0.40 / 16 = 0.025 m (2.5 cm)
+    // F2 = 200 * 16 = 3200 N
+    // W2 = 3200 * 0.025 = 80 J
+    const diffWork = Math.abs(press.work1 - press.work2);
+    const passed = diffWork < 1e-9 && press.isWorkConserved;
+
+    addTest(
+      'test_pascal_work_conservation',
+      'Princípio de Pascal: Conservação do Trabalho e Incompressibilidade (W₁ = W₂ e ΔV₁ = ΔV₂)',
+      'Princípio de Pascal',
+      'Valida que a prensa hidráulica ganha força mas perde deslocamento na mesma proporção, conservando integralmente a energia mecânica.',
+      passed,
+      `W₁ = 80.00 J | W₂ = 80.00 J | d₂ = 2.50 cm`,
+      `W₁ = ${press.work1.toFixed(2)} J | W₂ = ${press.work2.toFixed(2)} J | d₂ = ${(press.displacement2 * 100).toFixed(2)} cm`,
+      '< 1e-9 J',
+      `O fluido transmite integralmente a energia: não há criação de energia, apenas vantagem mecânica de força.`
+    );
+  } catch (err) {
+    addTest('test_pascal_work_conservation', 'Conservação do Trabalho na Prensa', 'Princípio de Pascal', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 41: Princípio de Arquimedes — Empuxo rigorosamente igual ao peso do fluido deslocado (E = m_desl · g)
+  try {
+    const bodyMass = 5.0; // kg
+    const bodyVol = 0.002; // m^3 (2 litros) -> rho = 2500 kg/m^3 (afunda)
+    const fluidRho = 1000; // água
+    const g = 9.8;
+
+    const buoyancy = calculateBuoyancyState(bodyMass, bodyVol, fluidRho, g);
+    // V_sub = 0.002 m^3
+    // m_deslocada = 1000 * 0.002 = 2.0 kg
+    // E = 2.0 * 9.8 = 19.6 N
+    // P_deslocado = 2.0 * 9.8 = 19.6 N
+    const expectedE = fluidRho * bodyVol * g;
+    const diffE = Math.abs(buoyancy.buoyantForce - expectedE);
+    const diffWeightFluid = Math.abs(buoyancy.buoyantForce - buoyancy.displacedWeight);
+
+    const passed = diffE < 1e-9 && diffWeightFluid < 1e-9;
+    addTest(
+      'test_archimedes_buoyant_force_equality',
+      'Princípio de Arquimedes: Empuxo = Peso do Volume de Fluido Deslocado (E = ρ_f · V_sub · g)',
+      'Empuxo e Princípio de Arquimedes',
+      'Comprova a lei fundamental de Arquimedes: a força vertical ascendente gerada pelo gradiente de pressão é exatamente igual ao peso do fluido deslocado.',
+      passed,
+      `E = 19.60 N | Peso do Fluido Deslocado = 19.60 N`,
+      `E = ${buoyancy.buoyantForce.toFixed(2)} N | P_desl = ${buoyancy.displacedWeight.toFixed(2)} N`,
+      '< 1e-9 N',
+      `Massa de água transbordada para a balança de coleta: ${(buoyancy.displacedMass).toFixed(3)} kg.`
+    );
+  } catch (err) {
+    addTest('test_archimedes_buoyant_force_equality', 'Princípio de Arquimedes', 'Empuxo e Princípio de Arquimedes', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 42: Fração de Volume Submerso de Corpo Flutuante (V_sub / V = ρ_c / ρ_f)
+  try {
+    // Iceberg flutuando na água do mar: rho_gelo = 920 kg/m^3, rho_mar = 1025 kg/m^3
+    const rhoIce = 920;
+    const rhoSea = 1025;
+    const iceVol = 10.0; // m^3
+    const iceMass = rhoIce * iceVol; // 9200 kg
+
+    const buoyancy = calculateBuoyancyState(iceMass, iceVol, rhoSea, 9.8);
+    // Fração submersa teórica = 920 / 1025 = ~0.89756 (89.76%)
+    const expectedFraction = rhoIce / rhoSea;
+    const diffFraction = Math.abs(buoyancy.submergedFraction - expectedFraction);
+    // Em flutuação livre, E deve igualar P (peso do iceberg = 9200 * 9.8 = 90160 N)
+    const diffEquilibrium = Math.abs(buoyancy.buoyantForce - buoyancy.trueWeight);
+
+    const passed = diffFraction < 1e-6 && diffEquilibrium < 1e-6 && buoyancy.regime === 'floats';
+    addTest(
+      'test_floating_submerged_fraction',
+      'Fração de Volume Submerso em Flutuação Estável (V_sub/V_total = ρ_c / ρ_f)',
+      'Empuxo e Princípio de Arquimedes',
+      'Valida que em corpos de menor densidade que o meio (como gelo ou madeira), a fração submersa é exatamente a razão entre as densidades e o empuxo equilibra o peso.',
+      passed,
+      `Submerso = ${(expectedFraction * 100).toFixed(2)}% | E = P = ${(buoyancy.trueWeight).toFixed(1)} N`,
+      `Submerso = ${(buoyancy.submergedFraction * 100).toFixed(2)}% | E = ${buoyancy.buoyantForce.toFixed(1)} N | P = ${buoyancy.trueWeight.toFixed(1)} N`,
+      '< 1e-6',
+      `Regime confirmado: "${buoyancy.regime}". Apenas ~10,2% do volume do iceberg permanece visível emerso.`
+    );
+  } catch (err) {
+    addTest('test_floating_submerged_fraction', 'Fração Submersa Iceberg', 'Empuxo e Princípio de Arquimedes', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 43: Peso Aparente em Corpo Totalmente Submerso (P_ap = P - E)
+  try {
+    // Bloco metálico suspenso por um dinamômetro dentro da água
+    const mass = 8.0; // kg de ferro
+    const vol = 0.001; // m^3 (1 litro de ferro) -> rho = 8000 kg/m^3
+    const rhoWater = 1000;
+    const g = 10.0;
+
+    const buoyancy = calculateBuoyancyState(mass, vol, rhoWater, g);
+    // P = 8.0 * 10 = 80 N
+    // E = 1000 * 0.001 * 10 = 10 N
+    // P_aparente = 80 - 10 = 70 N (leitura do dinamômetro)
+    const expectedP = 80.0;
+    const expectedE = 10.0;
+    const expectedPap = 70.0;
+
+    const passed =
+      Math.abs(buoyancy.trueWeight - expectedP) < 1e-9 &&
+      Math.abs(buoyancy.buoyantForce - expectedE) < 1e-9 &&
+      Math.abs(buoyancy.apparentWeight - expectedPap) < 1e-9;
+
+    addTest(
+      'test_apparent_weight_submerged',
+      'Redução de Tensão Dinamométrica e Peso Aparente (P_ap = P - E)',
+      'Empuxo e Princípio de Arquimedes',
+      'Comprova que a leitura de um dinamômetro sustentando um corpo imerso é reduzida pelo empuxo hidrostático exatamente no valor do empuxo.',
+      passed,
+      `P_real = 80.0 N | Empuxo E = 10.0 N | P_aparente = 70.0 N`,
+      `P_real = ${buoyancy.trueWeight.toFixed(1)} N | E = ${buoyancy.buoyantForce.toFixed(1)} N | P_ap = ${buoyancy.apparentWeight.toFixed(1)} N`,
+      '< 1e-9 N',
+      `O corpo parece ter uma massa aparente de ${(buoyancy.apparentWeight / g).toFixed(2)} kg quando submerso.`
+    );
+  } catch (err) {
+    addTest('test_apparent_weight_submerged', 'Peso Aparente Dinamômetro', 'Empuxo e Princípio de Arquimedes', 'Erro', false, 'Válido', String(err));
+  }
+
+  // ==========================================
+  // ÁREA 4: TERMODINÂMICA (TESTES 44 - 51)
+  // ==========================================
+
+  // Test 44: Equação Fundamental dos Gases Ideais (P·V = n·R·T)
+  try {
+    const p = 200000; // 200 kPa (~2 atm)
+    const v = 0.015;  // 15 Litros = 0.015 m^3
+    const n = 1.2;    // 1.2 mols
+    const state = calculateIdealGasState(p, v, n);
+    // T = P * V / (n * R) = 3000 / (1.2 * 8.314462618) = 300.6806 K
+    const expectedT = (p * v) / (n * 8.314462618);
+    const diffT = Math.abs(state.temperature - expectedT);
+
+    const passed = diffT < 1e-9;
+    addTest(
+      'test_ideal_gas_law_exact',
+      'Equação Fundamental dos Gases Ideais (P·V = n·R·T)',
+      'Gases Ideais e Transformações',
+      'Comprova que a temperatura termodinâmica absoluta em Kelvin satisfaz estritamente a lei dos gases ideais para qualquer combinação arbitrária de P, V e n.',
+      passed,
+      `T = ${expectedT.toFixed(3)} K (${(expectedT - 273.15).toFixed(1)} °C)`,
+      `T = ${state.temperature.toFixed(3)} K (${state.temperatureC.toFixed(1)} °C)`,
+      '< 1e-9 K',
+      `Energia interna molecular U = ${state.internalEnergy.toFixed(1)} J; v_rms = ${state.vRms.toFixed(1)} m/s.`
+    );
+  } catch (err) {
+    addTest('test_ideal_gas_law_exact', 'Gases Ideais', 'Gases Ideais e Transformações', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 45: Transformação Isotérmica (Lei de Boyle-Mariotte e Trabalho W = nRT ln(Vf/Vi))
+  try {
+    const p1 = 300000; // 300 kPa
+    const v1 = 0.01;   // 10 L
+    const v2 = 0.02;   // 20 L (expansão com duplicação de volume)
+    const n = 1.0;
+
+    const res = calculateGasTransformation('isothermal', p1, v1, v2, n);
+    // P2 = P1 * (V1 / V2) = 150 kPa
+    const expectedP2 = 150000;
+    // W = n * R * T * ln(2) = P1 * V1 * ln(2) = 3000 * 0.69314718 = 2079.44 J
+    const expectedWork = p1 * v1 * Math.log(v2 / v1);
+
+    const diffP = Math.abs(res.finalP - expectedP2);
+    const diffW = Math.abs(res.workW - expectedWork);
+    const diffU = Math.abs(res.deltaU); // Em isotérmica, Delta U deve ser zero!
+
+    const passed = diffP < 1e-6 && diffW < 1e-6 && diffU < 1e-12 && Math.abs(res.heatQ - res.workW) < 1e-9;
+    addTest(
+      'test_isothermal_expansion_work',
+      'Transformação Isotérmica: Lei de Boyle e Trabalho Logarítmico (ΔU = 0, Q = W = nRT ln(V₂/V₁))',
+      'Gases Ideais e Transformações',
+      'Valida que em expansão à temperatura constante, a pressão cai pela metade quando o volume dobra, e todo o calor absorvido converte-se integralmente em trabalho mecânico.',
+      passed,
+      `P₂ = 150.00 kPa | W = ${expectedWork.toFixed(2)} J | ΔU = 0.00 J`,
+      `P₂ = ${(res.finalP / 1000).toFixed(2)} kPa | W = ${res.workW.toFixed(2)} J | ΔU = ${res.deltaU.toFixed(2)} J`,
+      '< 1e-6 J',
+      `Calor absorvido Q = ${res.heatQ.toFixed(2)} J converteu-se 100% no trabalho realizado pelo pistão.`
+    );
+  } catch (err) {
+    addTest('test_isothermal_expansion_work', 'Transformação Isotérmica', 'Gases Ideais e Transformações', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 46: Transformação Isobárica (Trabalho P·ΔV e Relação de Charles V1/T1 = V2/T2)
+  try {
+    const p = 100000; // 100 kPa
+    const v1 = 0.005; // 5 L
+    const v2 = 0.015; // 15 L (triplicação de volume)
+    const n = 0.5;
+
+    const res = calculateGasTransformation('isobaric', p, v1, v2, n);
+    // W = P * (V2 - V1) = 100000 * 0.010 = 1000 J
+    const expectedW = 1000.0;
+    // Como P = cte, T2 deve ser 3 * T1
+    const expectedTRatio = 3.0;
+    const actualTRatio = res.finalT / res.initialT;
+
+    const passed = Math.abs(res.workW - expectedW) < 1e-9 && Math.abs(actualTRatio - expectedTRatio) < 1e-9;
+    addTest(
+      'test_isobaric_charles_work',
+      'Transformação Isobárica: Lei de Charles e Trabalho Isométrico (W = P·ΔV e V₂/V₁ = T₂/T₁)',
+      'Gases Ideais e Transformações',
+      'Comprova que a pressão constante, triplicar o volume exige triplicar a temperatura absoluta, e o trabalho mecânico é exatamente a integral retangular P·(V₂ - V₁).',
+      passed,
+      `W = 1000.00 J | Razão T₂/T₁ = 3.00x`,
+      `W = ${res.workW.toFixed(2)} J | Razão T₂/T₁ = ${actualTRatio.toFixed(2)}x`,
+      '< 1e-9 J',
+      `Calor total transferido Q = ${res.heatQ.toFixed(1)} J (ΔU = ${res.deltaU.toFixed(1)} J + W = ${res.workW.toFixed(1)} J).`
+    );
+  } catch (err) {
+    addTest('test_isobaric_charles_work', 'Transformação Isobárica', 'Gases Ideais e Transformações', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 47: Primeira Lei da Termodinâmica (Balanço Estrito ΔU = Q - W)
+  try {
+    const heatQ = 4500.0; // 4.5 kJ de calor injetado
+    const workW = 1800.0; // 1.8 kJ de trabalho realizado na expansão
+    const u1 = 5000.0;
+
+    const firstLaw = calculateFirstLaw(heatQ, workW, u1);
+    // Delta U = Q - W = 4500 - 1800 = 2700 J
+    const expectedDeltaU = 2700.0;
+    const expectedU2 = 7700.0;
+
+    const passed =
+      Math.abs(firstLaw.deltaU - expectedDeltaU) < 1e-12 &&
+      Math.abs(firstLaw.finalInternalEnergy - expectedU2) < 1e-12 &&
+      firstLaw.isFirstLawSatisfied;
+
+    addTest(
+      'test_first_law_conservation',
+      'Primeira Lei da Termodinâmica: Conservação Estrita da Energia (ΔU = Q - W)',
+      'Primeira Lei da Termodinâmica',
+      'Valida que a variação da energia interna de um sistema fechado é rigorosamente a diferença entre o calor trocado e o trabalho mecânico executado.',
+      passed,
+      `ΔU = 2700.00 J | U_final = 7700.00 J`,
+      `ΔU = ${firstLaw.deltaU.toFixed(2)} J | U_final = ${firstLaw.finalInternalEnergy.toFixed(2)} J`,
+      '< 1e-12 J',
+      `Balanço energético: Calor de entrada (4500 J) = Trabalho útil (1800 J) + Acréscimo interno (2700 J).`
+    );
+  } catch (err) {
+    addTest('test_first_law_conservation', 'Primeira Lei da Termodinâmica', 'Primeira Lei da Termodinâmica', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 48: Transformação Adiabática (Q = 0 => W = -ΔU)
+  try {
+    const p1 = 200000;
+    const v1 = 0.008;
+    const v2 = 0.016; // expansão adiabática
+    const n = 1.0;
+
+    const res = calculateGasTransformation('adiabatic', p1, v1, v2, n, 3); // monoatômico gamma = 5/3
+    // Em adiabática, Q = 0 estrito
+    const isQZero = Math.abs(res.heatQ) < 1e-12;
+    // W = -Delta U
+    const diffBalance = Math.abs(res.workW + res.deltaU);
+
+    const passed = isQZero && diffBalance < 1e-9 && res.finalT < res.initialT;
+    addTest(
+      'test_adiabatic_expansion_cooling',
+      'Expansão Adiabática: Trabalho às Custas da Energia Interna (Q = 0 e W = -ΔU => Resfriamento)',
+      'Primeira Lei da Termodinâmica',
+      'Comprova que em expansão rápida ou termicamente isolada, o trabalho de expansão é realizado exclusivamente à custa da energia interna, provocando resfriamento do gás.',
+      passed,
+      `Q = 0.00 J | W + ΔU = 0.00 J | T₂ < T₁ (${res.initialT.toFixed(1)} K -> ${res.finalT.toFixed(1)} K)`,
+      `Q = ${res.heatQ.toFixed(2)} J | W + ΔU = ${diffBalance.toExponential(2)} J | T₂ = ${res.finalT.toFixed(1)} K`,
+      '< 1e-9 J',
+      `O gás resfria em ${(res.initialT - res.finalT).toFixed(1)} K enquanto realiza ${res.workW.toFixed(1)} J de trabalho sobre o pistão.`
+    );
+  } catch (err) {
+    addTest('test_adiabatic_expansion_cooling', 'Expansão Adiabática', 'Primeira Lei da Termodinâmica', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 49: Rendimento Máximo Teórico do Ciclo de Carnot (η_C = 1 - T_C / T_H)
+  try {
+    // Fonte Quente: 600 K (326.85 °C) | Fonte Fria: 300 K (26.85 °C)
+    const tHot = 600.0;
+    const tCold = 300.0;
+
+    const carnot = calculateCarnotCycle(tHot, tCold, 1.0);
+    // eta_Carnot = 1 - 300 / 600 = 0.50 (50.0%)
+    const expectedEfficiency = 0.50;
+    const diffEta = Math.abs(carnot.carnotEfficiency - expectedEfficiency);
+    // Verifica se rendimento real calculado pelas integrais do ciclo bate com a fórmula teórica
+    const diffActualEta = Math.abs(carnot.actualEfficiency - expectedEfficiency);
+
+    const passed = diffEta < 1e-9 && diffActualEta < 1e-6;
+    addTest(
+      'test_carnot_maximum_efficiency',
+      'Teorema de Carnot: Rendimento Máximo de Máquinas Térmicas (η_C = 1 - T_fria / T_quente)',
+      'Máquinas Térmicas e Ciclo de Carnot',
+      'Valida que nenhuma máquina térmica operando entre as temperaturas de 600 K e 300 K pode superar o rendimento teórico máximo de 50,0%.',
+      passed,
+      `η_C = 50.00% (T_H = 600 K, T_C = 300 K)`,
+      `η_C = ${(carnot.carnotEfficiency * 100).toFixed(2)}% | η_ciclo = ${(carnot.actualEfficiency * 100).toFixed(2)}%`,
+      '< 1e-9',
+      `Calor absorvido Q_H = ${carnot.heatAbsorbedQH.toFixed(1)} J | Calor rejeitado Q_C = ${carnot.heatRejectedQC.toFixed(1)} J.`
+    );
+  } catch (err) {
+    addTest('test_carnot_maximum_efficiency', 'Rendimento de Carnot', 'Máquinas Térmicas e Ciclo de Carnot', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 50: Conservação da Energia em Ciclo Fechado (W_líquido = Q_H - Q_C e ΔU_ciclo = 0)
+  try {
+    const tHot = 500.0;
+    const tCold = 250.0;
+    const carnot = calculateCarnotCycle(tHot, tCold, 1.5, 0.001, 0.003);
+
+    // No ciclo completo, o gás retorna ao estado inicial, logo Delta U_ciclo = 0
+    // Pela 1ª Lei: W_net = Q_H - Q_C
+    const expectedWNet = carnot.heatAbsorbedQH - carnot.heatRejectedQC;
+    const diffWork = Math.abs(carnot.netWork - expectedWNet);
+
+    const passed = diffWork < 1e-9 && carnot.netWork > 0;
+    addTest(
+      'test_heat_engine_cycle_energy_conservation',
+      'Conservação da Energia em Ciclo Fechado (W_líquido = Q_H - Q_C e ΔU_ciclo = 0)',
+      'Máquinas Térmicas e Ciclo de Carnot',
+      'Comprova que em qualquer máquina térmica operando em ciclo termodinâmico fechado, a energia líquida entregue sob forma de trabalho é rigorosamente a diferença entre o calor absorvido e o calor rejeitado.',
+      passed,
+      `W_net = ${(expectedWNet).toFixed(2)} J (Q_H = ${carnot.heatAbsorbedQH.toFixed(2)} J, Q_C = ${carnot.heatRejectedQC.toFixed(2)} J)`,
+      `W_net = ${carnot.netWork.toFixed(2)} J`,
+      '< 1e-9 J',
+      `O ciclo produz ${carnot.netWork.toFixed(1)} J de trabalho mecânico útil a cada volta do volante de inércia.`
+    );
+  } catch (err) {
+    addTest('test_heat_engine_cycle_energy_conservation', 'Balanço Energético do Ciclo', 'Máquinas Térmicas e Ciclo de Carnot', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 51: Calorimetria e Equilíbrio Térmico (Conservação da Energia Térmica ΣQ = 0)
+  try {
+    // 200 g de água a 20°C misturada com 100 g de ferro a 100°C
+    // c_água = 1.0 cal/g°C | c_ferro = 0.11 cal/g°C
+    // Te = (200 * 1.0 * 20 + 100 * 0.11 * 100) / (200 * 1.0 + 100 * 0.11)
+    // Te = (4000 + 1100) / (200 + 11) = 5100 / 211 = 24.1706 °C
+    const water: any = { name: 'Água', massG: 200, specificHeat: 1.0, initialTempC: 20 };
+    const iron: any = { name: 'Ferro', massG: 100, specificHeat: 0.11, initialTempC: 100 };
+
+    const calResult = calculateCalorimetryEquilibrium(water, iron);
+    const expectedTe = (200 * 1.0 * 20 + 100 * 0.11 * 100) / (200 * 1.0 + 100 * 0.11);
+    const diffTe = Math.abs(calResult.equilibriumTempC - expectedTe);
+
+    // Q_cedido pelo ferro = 100 * 0.11 * (100 - 24.1706) = 11 * 75.8294 = 834.12 cal
+    // Q_absorvido pela água = 200 * 1.0 * (24.1706 - 20) = 200 * 4.1706 = 834.12 cal
+    const qWater = 200 * 1.0 * (calResult.equilibriumTempC - 20);
+    const qIron = 100 * 0.11 * (100 - calResult.equilibriumTempC);
+    const diffQ = Math.abs(qWater - qIron);
+
+    const passed = diffTe < 1e-9 && diffQ < 1e-9 && calResult.isConservationSatisfied;
+    addTest(
+      'test_calorimetry_thermal_equilibrium',
+      'Princípio das Trocas de Calor e Equilíbrio Térmico (ΣQ = 0 => Q_recebido = Q_cedido)',
+      'Calorimetria e Mudanças de Fase',
+      'Valida que em um calorímetro ideal adiabático, a temperatura de equilíbrio térmico estabiliza exatamente onde a quantidade de calor cedida pelo corpo mais quente iguala o calor recebido pelo mais frio.',
+      passed,
+      `T_eq = ${expectedTe.toFixed(2)} °C | Q_trocado = ${qIron.toFixed(2)} cal`,
+      `T_eq = ${calResult.equilibriumTempC.toFixed(2)} °C | Q_trocado = ${calResult.heatTransferredCal.toFixed(2)} cal (${calResult.heatTransferredJoules.toFixed(1)} J)`,
+      '< 1e-9 °C',
+      `Conservação estrita da energia térmica: 834,1 cal cedidas pelo bloco foram 100% transferidas à água.`
+    );
+  } catch (err) {
+    addTest('test_calorimetry_thermal_equilibrium', 'Calorimetria e Equilíbrio', 'Calorimetria e Mudanças de Fase', 'Erro', false, 'Válido', String(err));
+  }
+
+  // ==========================================
+  // ÁREA 5: ELETRICIDADE (TESTES 52 - 53)
+  // ==========================================
+
+  // Test 52: Lei de Coulomb — Proporcionalidade e Inverso do Quadrado da Distância (F = k·|q1·q2|/r²)
+  try {
+    const q1 = 2.0;  // +2 microC
+    const q2 = -3.0; // -3 microC (atração)
+    const r1 = 0.5;  // 0.5 m
+    const r2 = 1.0;  // 1.0 m (dobro da distância)
+
+    const state1 = calculateCoulombLaw(q1, q2, r1);
+    const state2 = calculateCoulombLaw(q1, q2, r2);
+
+    // F1 = 8.9875517923e9 * 6e-12 / 0.25 = 0.215701243 N
+    const expectedF1 = (COULOMB_CONSTANT_K * 6e-12) / (0.5 * 0.5);
+    const diffF1 = Math.abs(state1.forceMagnitudeN - expectedF1);
+
+    // Dobrar r deve reduzir F em exatamente 4 vezes (1/r^2)
+    const ratio = state1.forceMagnitudeN / state2.forceMagnitudeN;
+    const diffRatio = Math.abs(ratio - 4.0);
+
+    const isAttractive = state1.interactionType === 'attractive' && state1.forceSignedN < 0;
+    const passed = diffF1 < 1e-9 && diffRatio < 1e-9 && isAttractive;
+
+    addTest(
+      'test_coulomb_law_inverse_square',
+      'Lei de Coulomb: Lei do Inverso do Quadrado e Atração Eletrostática (F = k·|q₁q₂|/r²)',
+      'Lei de Coulomb',
+      'Valida que a força eletrostática entre duas cargas é estritamente inversamente proporcional ao quadrado da distância e de natureza atrativa para sinais opostos.',
+      passed,
+      `F(0.5m) = ${expectedF1.toFixed(4)} N | Razão F(r)/F(2r) = 4.00x | Regime: Atração`,
+      `F(0.5m) = ${state1.forceMagnitudeN.toFixed(4)} N | Razão = ${ratio.toFixed(2)}x | Regime: ${state1.interactionType}`,
+      '< 1e-9 N',
+      `Cargas de +2 µC e -3 µC distantes 0,5 m experimentam força atrativa mútuo-recíproca (3ª Lei de Newton).`
+    );
+  } catch (err) {
+    addTest('test_coulomb_law_inverse_square', 'Lei de Coulomb', 'Lei de Coulomb', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 53: Campo Elétrico — Princípio da Superposição Linear (E = Σ E_i)
+  try {
+    // Duas cargas idênticas de +4 microC simétricas em x = -1 m e x = +1 m
+    const charges = [
+      { id: 'q1', qMicroC: 4.0, x: -1.0, y: 0, z: 0 },
+      { id: 'q2', qMicroC: 4.0, x: 1.0, y: 0, z: 0 },
+    ];
+
+    // No ponto médio exato (0, 0, 0), os vetores devem se anular perfeitamente: E_total = 0
+    const centerPoint = calculateElectricFieldAtPoint(charges, { x: 0, y: 0, z: 0 });
+    const isCenterZero = centerPoint.magnitude < 1e-9;
+
+    // Em (0, 1, 0), as componentes em x se anulam e as componentes em y somam construtivamente
+    const offAxisPoint = calculateElectricFieldAtPoint(charges, { x: 0, y: 1.0, z: 0 });
+    const isXZero = Math.abs(offAxisPoint.ex) < 1e-9;
+    const isYPositive = offAxisPoint.ey > 0 && Math.abs(offAxisPoint.ey - offAxisPoint.magnitude) < 1e-9;
+
+    const passed = isCenterZero && isXZero && isYPositive;
+
+    addTest(
+      'test_electric_field_superposition',
+      'Campo Elétrico: Princípio da Superposição Vetorial (E = Σ E_i)',
+      'Linhas de Campo Elétrico',
+      'Comprova que a intensidade do vetor campo elétrico resultante respeita o princípio da superposição linear, anulando-se no ponto médio entre duas cargas idênticas.',
+      passed,
+      'E(centro) = 0.00 N/C | E_x(0,1,0) = 0 | E_y(0,1,0) > 0',
+      `E(centro) = ${centerPoint.magnitude.toExponential(2)} N/C | E_x = ${offAxisPoint.ex.toExponential(2)} N/C | E_y = ${offAxisPoint.ey.toFixed(1)} N/C`,
+      '< 1e-9 N/C',
+      `Superposição vetorial de duas fontes pontuais comprovada analítica e numericamente.`
+    );
+  } catch (err) {
+    addTest('test_electric_field_superposition', 'Superposição de Campo Elétrico', 'Linhas de Campo Elétrico', 'Erro', false, 'Válido', String(err));
+  }
+
+  // -------------------------------------------------------------
+  // TEST 54: POTENCIAL ELÉTRICO E TRABALHO ELETROSTÁTICO
+  // Invariante: V = k*q/r, W = q0*(VA - VB) = -q0*ΔV, e W = 0 em superfícies equipotenciais (ΔV = 0)
+  // -------------------------------------------------------------
+  try {
+    const qSourceMicroC = 2.0; // 2 µC at origin (0,0,0)
+    const singleSource = [{ id: 'q1', qMicroC: qSourceMicroC, x: 0, y: 0, z: 0 }];
+    const pointA = { x: 1.0, y: 0, z: 0 }; // rA = 1.0 m
+    const pointB = { x: 2.0, y: 0, z: 0 }; // rB = 2.0 m
+    const pointEquipotential = { x: 0, y: 1.0, z: 0 }; // r_eq = 1.0 m (mesma distância de A)
+    const q0MicroC = 3.0; // 3 µC test charge
+
+    // Radial movement from A (1 m) to B (2 m)
+    const workStateRadial = calculateElectricWork(singleSource, pointA, pointB, q0MicroC);
+    const expectedVA = (COULOMB_CONSTANT_K * qSourceMicroC * 1e-6) / 1.0;
+    const expectedVB = (COULOMB_CONSTANT_K * qSourceMicroC * 1e-6) / 2.0;
+    const expectedWorkElec = (q0MicroC * 1e-6) * (expectedVA - expectedVB);
+
+    const isVAExact = Math.abs(workStateRadial.vA - expectedVA) < 1e-4;
+    const isVBExact = Math.abs(workStateRadial.vB - expectedVB) < 1e-4;
+    const isWorkExact = Math.abs(workStateRadial.workElectricJ - expectedWorkElec) < 1e-8;
+
+    // Movement along equipotential surface: A(1, 0, 0) to pointEquipotential(0, 1, 0)
+    const workStateEquipotential = calculateElectricWork(singleSource, pointA, pointEquipotential, q0MicroC);
+    const isEquipotentialWorkZero = Math.abs(workStateEquipotential.workElectricJ) < 1e-12;
+    const isDeltaVZero = Math.abs(workStateEquipotential.deltaV) < 1e-12;
+
+    const passed = isVAExact && isVBExact && isWorkExact && isEquipotentialWorkZero && isDeltaVZero;
+
+    addTest(
+      'test_electric_potential_and_work',
+      'Potencial Elétrico: V = kq/r e Trabalho W = q₀·ΔV em Superfícies Equipotenciais',
+      'Potencial Elétrico',
+      'Verifica o decaimento inverso da distância V ∝ 1/r, a conservação do trabalho eletrostático W = q₀(V_A - V_B) e o trabalho nulo em superfícies equipotenciais (ΔV = 0).',
+      passed,
+      `V_A = ${expectedVA.toFixed(1)} V | V_B = ${expectedVB.toFixed(1)} V | W_equipotencial = 0.00 J`,
+      `V_A = ${workStateRadial.vA.toFixed(1)} V | V_B = ${workStateRadial.vB.toFixed(1)} V | W_equipotencial = ${workStateEquipotential.workElectricJ.toExponential(2)} J`,
+      '< 1e-8 J',
+      `Potencial escalar e invariância de trabalho ao longo de superfícies equipotenciais validados.`
+    );
+  } catch (err) {
+    addTest('test_electric_potential_and_work', 'Potencial Elétrico e Trabalho', 'Potencial Elétrico', 'Erro', false, 'Válido', String(err));
+  }
+
+  // -------------------------------------------------------------
+  // TEST 55: CAPACITOR DE PLACAS PARALELAS E DENSIDADE DE ENERGIA
+  // Invariante: C = ε*A/d, Q = C*V, U = C*V^2 / 2, e efeito de inserção de dielétrico (C_kappa = kappa * C_0)
+  // -------------------------------------------------------------
+  try {
+    const area = 0.04;      // 0.04 m^2
+    const distance = 0.01;  // 0.01 m
+    const voltage = 24.0;   // 24 V
+
+    // Vacuum (kappa = 1.0)
+    const capVacuum = calculateParallelPlateCapacitor(area, distance, voltage, 1.0);
+    const expectedC0 = (VACUUM_PERMITTIVITY_EPSILON_0 * area) / distance;
+    const expectedE = voltage / distance;
+    const expectedQ = expectedC0 * voltage;
+    const expectedU = 0.5 * expectedC0 * voltage * voltage;
+
+    const isC0Accurate = Math.abs(capVacuum.capacitanceF - expectedC0) / expectedC0 < 1e-7;
+    const isEAccurate = Math.abs(capVacuum.electricFieldVPerM - expectedE) < 1e-6;
+    const isQAccurate = Math.abs(capVacuum.storedChargeC - expectedQ) / expectedQ < 1e-7;
+    const isUAccurate = Math.abs(capVacuum.storedEnergyJ - expectedU) / expectedU < 1e-7;
+
+    // Dielectric insertion (kappa = 3.5)
+    const kappa = 3.5;
+    const capDielectric = calculateParallelPlateCapacitor(area, distance, voltage, kappa);
+    const isKappaScaling = Math.abs(capDielectric.capacitanceF - kappa * expectedC0) / (kappa * expectedC0) < 1e-7;
+
+    // Energy density consistency: u * Volume == U
+    const volume = area * distance;
+    const energyFromDensity = capVacuum.energyDensityJPerM3 * volume;
+    const isEnergyDensityConsistent = Math.abs(energyFromDensity - capVacuum.storedEnergyJ) / capVacuum.storedEnergyJ < 1e-7;
+
+    const passed = isC0Accurate && isEAccurate && isQAccurate && isUAccurate && isKappaScaling && isEnergyDensityConsistent;
+
+    addTest(
+      'test_parallel_plate_capacitor',
+      'Capacitância e Energia: C = εA/d, Q = CV, U = CV²/2 e Meios Dielétricos',
+      'Capacitor de Placas Paralelas',
+      'Comprova a dependência geométrica da capacitância (proporcional à área e inversamente à distância), a amplificação pelo dielétrico C = κ·C₀ e a conservação da energia eletrostática.',
+      passed,
+      `C₀ = ${(expectedC0 * 1e12).toFixed(2)} pF | E = ${expectedE.toFixed(0)} V/m | C_diel = ${(kappa * expectedC0 * 1e12).toFixed(2)} pF`,
+      `C₀ = ${capVacuum.capacitancePF.toFixed(2)} pF | E = ${capVacuum.electricFieldVPerM.toFixed(0)} V/m | C_diel = ${capDielectric.capacitancePF.toFixed(2)} pF`,
+      '< 1e-7 relativo',
+      `Equações fundamentais de capacitores planos e densidade de energia perfeitamente validadas.`
+    );
+  } catch (err) {
+    addTest('test_parallel_plate_capacitor', 'Capacitor de Placas Paralelas', 'Capacitor de Placas Paralelas', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 56: State Serialization to Shareable URL (Link Compartilhável)
+  try {
+    const serialized = serializeLabUrlState('parallel_plate_capacitor', {
+      areaM2: 0.04,
+      distanceMm: 12,
+      dielectric: 'glass',
+      voltageV: 20,
+    });
+    const containsMod = serialized.includes('parallel_plate_capacitor');
+    const containsArea = serialized.includes('areaM2=0.04');
+    const containsDist = serialized.includes('distanceMm=12');
+    const containsDiel = serialized.includes('dielectric=glass');
+    const containsVolt = serialized.includes('voltageV=20');
+    const passed = containsMod && containsArea && containsDist && containsDiel && containsVolt;
+
+    addTest(
+      'test_url_state_serialization',
+      'Serialização de Estado para URL Compartilhável',
+      'Estado Global & Links',
+      'Valida que os parâmetros atuais dos sliders e o identificador do laboratório são codificados de forma consistente em hash/query string.',
+      passed,
+      'Contém parallel_plate_capacitor, areaM2=0.04, distanceMm=12, voltageV=20, dielectric=glass',
+      serialized,
+      'Exato',
+      'Parâmetros e tipos preservados sem perda de precisão.'
+    );
+  } catch (err) {
+    addTest('test_url_state_serialization', 'Serialização de Estado', 'Estado Global & Links', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 57: Deserialization and Automatic Type Coercion
+  try {
+    const rawUrl = 'https://ondaslab3d.app/#standing_waves?harmonic=3&length=2.5&boundary=both_fixed&active=true';
+    const parsed = parseLabUrlState(rawUrl);
+    const passed =
+      parsed.moduleId === 'standing_waves' &&
+      parsed.params.harmonic === 3 &&
+      typeof parsed.params.harmonic === 'number' &&
+      parsed.params.length === 2.5 &&
+      typeof parsed.params.length === 'number' &&
+      parsed.params.boundary === 'both_fixed' &&
+      typeof parsed.params.boundary === 'string' &&
+      parsed.params.active === true &&
+      typeof parsed.params.active === 'boolean';
+
+    addTest(
+      'test_url_state_deserialization_and_coercion',
+      'Dessorção de Parâmetros da URL com Coerção Tipada',
+      'Estado Global & Links',
+      'Comprova que strings na URL são convertidas automaticamente para tipos nativos (números de ponto flutuante, inteiros e booleanos) sem falha de tipo no React.',
+      passed,
+      'harmonic=3 (number), length=2.5 (number), boundary="both_fixed" (string), active=true (boolean)',
+      `harmonic=${parsed.params.harmonic} (${typeof parsed.params.harmonic}), length=${parsed.params.length} (${typeof parsed.params.length}), boundary=${parsed.params.boundary} (${typeof parsed.params.boundary}), active=${parsed.params.active} (${typeof parsed.params.active})`,
+      'Exato',
+      'Parsing seguro de query/hash com fallback defensivo.'
+    );
+  } catch (err) {
+    addTest('test_url_state_deserialization_and_coercion', 'Dessorção com Coerção', 'Estado Global & Links', 'Erro', false, 'Válido', String(err));
+  }
+
+  // Test 58: Full Roundtrip Fidelity: State -> URL -> Restored State
+  try {
+    const testCases: Array<{ mod: any; params: Record<string, any> }> = [
+      {
+        mod: 'doppler',
+        params: { sourceSpeed: 60, observerSpeed: 0, emittedFreq: 440, soundSpeed: 340 },
+      },
+      {
+        mod: 'spring_mass',
+        params: { mass: 2.5, springK: 50, amplitude: 1.2, dampingCoeff: 0.15 },
+      },
+      {
+        mod: 'electric_potential',
+        params: { mode: 'two_charges', q1MicroC: 4.0, q2MicroC: -4.0, separationM: 0.8 },
+      },
+    ];
+
+    let allPassed = true;
+    for (const tc of testCases) {
+      const serialized = serializeLabUrlState(tc.mod, tc.params);
+      const reconstructedUrl = `http://localhost:3000/${serialized}`;
+      const restored = parseLabUrlState(reconstructedUrl);
+
+      if (restored.moduleId !== tc.mod) {
+        allPassed = false;
+        break;
+      }
+
+      for (const [key, expectedVal] of Object.entries(tc.params)) {
+        if (typeof expectedVal === 'number') {
+          if (Math.abs(Number(restored.params[key]) - expectedVal) > 1e-6) {
+            allPassed = false;
+          }
+        } else if (restored.params[key] !== expectedVal) {
+          allPassed = false;
+        }
+      }
+    }
+
+    addTest(
+      'test_url_state_roundtrip_fidelity',
+      'Fidelidade Total Roundtrip (Serialização → URL → Restauração)',
+      'Estado Global & Links',
+      'Garante que compartilhar um link recria exatamente a mesma simulação com todos os sliders e propriedades no mesmo valor.',
+      allPassed,
+      '100% de coincidência paramétrica em múltiplos laboratórios',
+      allPassed ? '100% coincidente' : 'Discrepância detectada',
+      '< 1e-6',
+      'Testado com Doppler, Sistema Massa-Mola e Potencial Elétrico.'
+    );
+  } catch (err) {
+    addTest('test_url_state_roundtrip_fidelity', 'Fidelidade Roundtrip', 'Estado Global & Links', 'Erro', false, 'Válido', String(err));
+  }
+
   return results;
 }
+
+
 
 // CLI Execution entry point
 if (typeof process !== 'undefined' && process.argv && process.argv[1]?.includes('tests')) {

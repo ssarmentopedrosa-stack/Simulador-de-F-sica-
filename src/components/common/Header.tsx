@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ModuleId } from '../../types/physics';
 import { MODULES } from '../../data/modules';
-import { Presentation, Award, CheckCircle2, ChevronDown } from 'lucide-react';
+import { Presentation, Award, CheckCircle2, ChevronDown, Link2, Check } from 'lucide-react';
+import { copyShareableSimulationLink } from '../../physics/urlState';
 
 interface HeaderProps {
   currentModuleId: ModuleId | 'home';
+  currentParams?: Record<string, any>;
   onSelectModule: (id: ModuleId | 'home') => void;
   onOpenTeacherMode: () => void;
   onOpenEnemBank: () => void;
@@ -13,11 +15,23 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   currentModuleId,
+  currentParams,
   onSelectModule,
   onOpenTeacherMode,
   onOpenEnemBank,
   onOpenTestRunner,
 }) => {
+  const [headerCopied, setHeaderCopied] = React.useState(false);
+
+  const handleCopySimulationLink = async () => {
+    if (currentModuleId === 'home') return;
+    const ok = await copyShareableSimulationLink(currentModuleId, currentParams);
+    if (ok) {
+      setHeaderCopied(true);
+      setTimeout(() => setHeaderCopied(false), 2200);
+    }
+  };
+
   return (
     <header className="w-full bg-slate-950 border-b border-slate-800/80 px-4 md:px-6 py-2.5 flex items-center justify-between gap-6 z-30">
       {/* Zone 1: Brand Wordmark */}
@@ -61,25 +75,127 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Dropdown Menu */}
-          <div className="absolute top-full left-0 mt-1 w-72 bg-slate-900/95 border border-slate-800 rounded-lg shadow-2xl p-1.5 hidden group-hover:block backdrop-blur-md z-50">
-            <div className="text-[10px] uppercase font-bold text-slate-500 px-2 py-1">
-              Módulos de Simulação
+          <div className="absolute top-full left-0 mt-1 w-80 bg-slate-900/95 border border-slate-800 rounded-lg shadow-2xl p-2 hidden group-hover:block backdrop-blur-md z-50 max-h-[80vh] overflow-y-auto">
+            {/* Mechanics Section */}
+            <div className="text-[10px] uppercase font-bold text-amber-400 px-2 py-1 flex items-center justify-between border-b border-slate-800/80 mb-1">
+              <span>Mecânica Clássica</span>
+              <span className="text-slate-500 font-mono">4 Labs</span>
             </div>
-            {MODULES.map((mod) => (
+            {MODULES.filter((m) => m.area === 'mechanics').map((mod) => (
               <button
                 key={mod.id}
                 onClick={() => onSelectModule(mod.id)}
-                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer mb-0.5 ${
+                  currentModuleId === mod.id
+                    ? 'bg-amber-950/60 text-amber-300 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="truncate pr-2">
+                  <div className="text-[10px] text-amber-400/80 font-mono">{mod.code}</div>
+                  <div className="truncate">{mod.title}</div>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 shrink-0">
+                  {mod.categoryLabel}
+                </span>
+              </button>
+            ))}
+
+            {/* Hydrostatics Section */}
+            <div className="text-[10px] uppercase font-bold text-sky-400 px-2 py-1 flex items-center justify-between border-b border-slate-800/80 mt-2 mb-1">
+              <span>Hidrostática</span>
+              <span className="text-slate-500 font-mono">4 Labs</span>
+            </div>
+            {MODULES.filter((m) => m.area === 'hydrostatics').map((mod) => (
+              <button
+                key={mod.id}
+                onClick={() => onSelectModule(mod.id)}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer mb-0.5 ${
+                  currentModuleId === mod.id
+                    ? 'bg-sky-950/60 text-sky-300 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="truncate pr-2">
+                  <div className="text-[10px] text-sky-400/80 font-mono">{mod.code}</div>
+                  <div className="truncate">{mod.title}</div>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 shrink-0">
+                  {mod.categoryLabel}
+                </span>
+              </button>
+            ))}
+
+            {/* Thermodynamics Section */}
+            <div className="text-[10px] uppercase font-bold text-orange-400 px-2 py-1 flex items-center justify-between border-b border-slate-800/80 mt-2 mb-1">
+              <span>Termodinâmica</span>
+              <span className="text-slate-500 font-mono">4 Labs</span>
+            </div>
+            {MODULES.filter((m) => m.area === 'thermodynamics').map((mod) => (
+              <button
+                key={mod.id}
+                onClick={() => onSelectModule(mod.id)}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer mb-0.5 ${
+                  currentModuleId === mod.id
+                    ? 'bg-orange-950/60 text-orange-300 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="truncate pr-2">
+                  <div className="text-[10px] text-orange-400/80 font-mono">{mod.code}</div>
+                  <div className="truncate">{mod.title}</div>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 shrink-0">
+                  {mod.categoryLabel}
+                </span>
+              </button>
+            ))}
+
+            {/* Waves Section */}
+            <div className="text-[10px] uppercase font-bold text-cyan-400 px-2 py-1 flex items-center justify-between border-b border-slate-800/80 mt-2 mb-1">
+              <span>Oscilações e Ondas</span>
+              <span className="text-slate-500 font-mono">8 Labs</span>
+            </div>
+            {MODULES.filter((m) => m.area === 'waves').map((mod) => (
+              <button
+                key={mod.id}
+                onClick={() => onSelectModule(mod.id)}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer mb-0.5 ${
                   currentModuleId === mod.id
                     ? 'bg-cyan-950/60 text-cyan-300 font-medium'
                     : 'text-slate-300 hover:bg-slate-800'
                 }`}
               >
                 <div className="truncate pr-2">
-                  <div className="text-[10px] text-slate-400">{mod.code}</div>
+                  <div className="text-[10px] text-cyan-400/80 font-mono">{mod.code}</div>
                   <div className="truncate">{mod.title}</div>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 shrink-0">
+                  {mod.categoryLabel}
+                </span>
+              </button>
+            ))}
+
+            {/* Electricity Section */}
+            <div className="text-[10px] uppercase font-bold text-amber-400 px-2 py-1 flex items-center justify-between border-b border-slate-800/80 mt-2 mb-1">
+              <span>Eletricidade</span>
+              <span className="text-slate-500 font-mono">{MODULES.filter((m) => m.area === 'electricity').length} Labs</span>
+            </div>
+            {MODULES.filter((m) => m.area === 'electricity').map((mod) => (
+              <button
+                key={mod.id}
+                onClick={() => onSelectModule(mod.id)}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between cursor-pointer mb-0.5 ${
+                  currentModuleId === mod.id
+                    ? 'bg-amber-950/60 text-amber-300 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="truncate pr-2">
+                  <div className="text-[10px] text-amber-400/80 font-mono">{mod.code}</div>
+                  <div className="truncate">{mod.title}</div>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 shrink-0">
                   {mod.categoryLabel}
                 </span>
               </button>
@@ -96,16 +212,72 @@ export const Header: React.FC<HeaderProps> = ({
           className="bg-slate-900 border border-slate-800 text-xs text-cyan-400 rounded px-2 py-1 max-w-[130px] sm:max-w-[170px] truncate focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
         >
           <option value="home">Visão Geral</option>
-          {MODULES.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.title}
-            </option>
-          ))}
+          <optgroup label="Mecânica Clássica">
+            {MODULES.filter((m) => m.area === 'mechanics').map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Hidrostática">
+            {MODULES.filter((m) => m.area === 'hydrostatics').map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Termodinâmica">
+            {MODULES.filter((m) => m.area === 'thermodynamics').map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Oscilações e Ondas">
+            {MODULES.filter((m) => m.area === 'waves').map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Eletricidade">
+            {MODULES.filter((m) => m.area === 'electricity').map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
 
-      {/* Zone 3: Actions (Teacher Mode, ENEM, Tests) */}
+
+      {/* Zone 3: Actions (Teacher Mode, ENEM, Tests, Share Link) */}
       <div className="flex items-center gap-2 shrink-0">
+        {currentModuleId !== 'home' && (
+          <button
+            onClick={handleCopySimulationLink}
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold border transition-all whitespace-nowrap cursor-pointer ${
+              headerCopied
+                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-sm'
+                : 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border-cyan-800/60 hover:border-cyan-500'
+            }`}
+            title="Copiar link compartilhável da simulação com os parâmetros atuais dos sliders"
+          >
+            {headerCopied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Link copiado!</span>
+              </>
+            ) : (
+              <>
+                <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline">Copiar Link</span>
+                <span className="sm:hidden">Link</span>
+              </>
+            )}
+          </button>
+        )}
+
         <button
           onClick={onOpenEnemBank}
           className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-900/50 transition-colors whitespace-nowrap cursor-pointer"

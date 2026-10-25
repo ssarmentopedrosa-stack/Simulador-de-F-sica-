@@ -10,7 +10,23 @@ export type ModuleId =
   | 'interference'
   | 'standing_waves'
   | 'doppler'
-  | 'phenomena';
+  | 'phenomena'
+  | 'work_power'
+  | 'energy_conservation'
+  | 'impulse_momentum'
+  | 'collisions'
+  | 'density_pressure'
+  | 'stevin_theorem'
+  | 'pascal_principle'
+  | 'buoyancy_archimedes'
+  | 'ideal_gas'
+  | 'first_law_thermodynamics'
+  | 'carnot_heat_engines'
+  | 'calorimetry'
+  | 'coulomb_law'
+  | 'electric_field_lines'
+  | 'electric_potential'
+  | 'parallel_plate_capacitor';
 
 export const VALID_MODULE_IDS: readonly ModuleId[] = [
   'shm',
@@ -21,6 +37,22 @@ export const VALID_MODULE_IDS: readonly ModuleId[] = [
   'standing_waves',
   'doppler',
   'phenomena',
+  'work_power',
+  'energy_conservation',
+  'impulse_momentum',
+  'collisions',
+  'density_pressure',
+  'stevin_theorem',
+  'pascal_principle',
+  'buoyancy_archimedes',
+  'ideal_gas',
+  'first_law_thermodynamics',
+  'carnot_heat_engines',
+  'calorimetry',
+  'coulomb_law',
+  'electric_field_lines',
+  'electric_potential',
+  'parallel_plate_capacitor',
 ] as const;
 
 export function isValidModuleId(id: unknown): id is ModuleId {
@@ -28,10 +60,14 @@ export function isValidModuleId(id: unknown): id is ModuleId {
 }
 
 export type ModuleCategory =
+  | 'mechanics'
   | 'oscillations'
   | 'mechanical_waves'
   | 'wave_phenomena'
-  | 'acoustics';
+  | 'acoustics'
+  | 'hydrostatics'
+  | 'thermodynamics'
+  | 'electricity';
 
 export interface ModuleInfo {
   id: ModuleId;
@@ -40,9 +76,12 @@ export interface ModuleInfo {
   shortDesc: string;
   category: ModuleCategory;
   categoryLabel: string;
+  area: 'mechanics' | 'waves' | 'hydrostatics' | 'thermodynamics' | 'electricity';
+  areaLabel: string;
   iconName: string;
   equations: string[];
 }
+
 
 export interface SimulationClock {
   time: number;

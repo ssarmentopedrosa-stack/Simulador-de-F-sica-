@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { calculateDoppler, DopplerState } from '../../physics/math';
 import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../../types/physics';
@@ -6,10 +6,14 @@ import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
 import { labAudio } from '../common/AudioController';
-import { Sliders, HelpCircle, Volume2, VolumeX, Radio } from 'lucide-react';
+import { Sliders, HelpCircle, Volume2, VolumeX, Radio, Activity } from 'lucide-react';
+
+import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
 interface DopplerAcoustics3DProps {
   onOpenExperiment?: () => void;
+  initialParams?: Record<string, any>;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
 interface WavefrontRing {
@@ -17,16 +21,53 @@ interface WavefrontRing {
   birthTime: number;
 }
 
-export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenExperiment }) => {
+export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({
+  onOpenExperiment,
+  initialParams,
+  onParamsChange,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // Doppler & Acoustics Parameters
-  const [sourceSpeed, setSourceSpeed] = useState<number>(35.0); // m/s
-  const [observerSpeed, setObserverSpeed] = useState<number>(0.0); // m/s
-  const [sourceFreq, setSourceFreq] = useState<number>(440.0); // Hz (A4)
+  const [sourceSpeed, setSourceSpeed] = useState<number>(
+    () => (initialParams?.sourceSpeed != null ? Number(initialParams.sourceSpeed) : 35.0)
+  );
+  const [observerSpeed, setObserverSpeed] = useState<number>(
+    () => (initialParams?.observerSpeed != null ? Number(initialParams.observerSpeed) : 0.0)
+  );
+  const [sourceFreq, setSourceFreq] = useState<number>(
+    () => (initialParams?.sourceFreq != null ? Number(initialParams.sourceFreq) : 440.0)
+  );
   const [soundSpeed] = useState<number>(340.0); // m/s in air
-  const [isBeatsMode, setIsBeatsMode] = useState<boolean>(false);
-  const [beatsFreq2, setBeatsFreq2] = useState<number>(444.0); // Hz
+  const [isBeatsMode, setIsBeatsMode] = useState<boolean>(
+    () => (initialParams?.isBeatsMode != null ? Boolean(initialParams.isBeatsMode) : false)
+  );
+  const [beatsFreq2, setBeatsFreq2] = useState<number>(
+    () => (initialParams?.beatsFreq2 != null ? Number(initialParams.beatsFreq2) : 444.0)
+  );
+  const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
+
+  const applyPreset = useCallback((p: Record<string, any>) => {
+    if (p.sourceSpeed !== undefined) setSourceSpeed(Number(p.sourceSpeed));
+    if (p.observerSpeed !== undefined) setObserverSpeed(Number(p.observerSpeed));
+    if (p.sourceFreq !== undefined) setSourceFreq(Number(p.sourceFreq));
+    if (p.isBeatsMode !== undefined) setIsBeatsMode(Boolean(p.isBeatsMode));
+    if (p.beatsFreq2 !== undefined) setBeatsFreq2(Number(p.beatsFreq2));
+  }, []);
+
+  useEffect(() => {
+    onParamsChange?.({ sourceSpeed, observerSpeed, sourceFreq, isBeatsMode, beatsFreq2 });
+  }, [sourceSpeed, observerSpeed, sourceFreq, isBeatsMode, beatsFreq2, onParamsChange]);
+
+  useEffect(() => {
+    if (initialParams) {
+      if (initialParams.sourceSpeed !== undefined) setSourceSpeed(Number(initialParams.sourceSpeed));
+      if (initialParams.observerSpeed !== undefined) setObserverSpeed(Number(initialParams.observerSpeed));
+      if (initialParams.sourceFreq !== undefined) setSourceFreq(Number(initialParams.sourceFreq));
+      if (initialParams.isBeatsMode !== undefined) setIsBeatsMode(Boolean(initialParams.isBeatsMode));
+      if (initialParams.beatsFreq2 !== undefined) setBeatsFreq2(Number(initialParams.beatsFreq2));
+    }
+  }, [initialParams]);
 
   // Audio state
   const [audioActive, setAudioActive] = useState<boolean>(false);
@@ -46,9 +87,9 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
   });
 
   const [dataBuffer, setDataBuffer] = useState<DataPoint[]>([]);
-  const [currentState, setCurrentState] = useState<DopplerState>(() =>
-    calculateDoppler(-60, 20, 35, 0, 440, 340)
-  );
+
+  const timeRef = useRef<number>(clock.time);
+  timeRef.current = clock.time;
 
   // Three.js mutable refs
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -72,6 +113,8 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
+    lastEmitTimeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
     ringsDataRef.current = [];
@@ -81,6 +124,17 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
       });
     }
   }, []);
+
+  // Derived Doppler physical calculations
+  const currentState = useMemo(() => {
+    const travelSpan = 160;
+    const cycleTime = travelSpan / Math.max(1, Math.abs(sourceSpeed));
+    const modTime = clock.time % cycleTime;
+    const srcX = -80 + modTime * sourceSpeed;
+    // Observer position responds to observer speed
+    const obsX = 20 + (observerSpeed !== 0 ? (((clock.time * observerSpeed) % 80 + 80) % 80 - 40) : 0);
+    return calculateDoppler(srcX, obsX, sourceSpeed, observerSpeed, sourceFreq, soundSpeed);
+  }, [clock.time, sourceSpeed, observerSpeed, sourceFreq, soundSpeed]);
 
   // Update audio synthesis when pitch changes
   useEffect(() => {
@@ -102,29 +156,21 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
     };
   }, [audioActive, volume, isBeatsMode, sourceFreq, beatsFreq2, currentState.observedFreq]);
 
-  // Update Doppler physical calculations
+  // Update data buffer
   useEffect(() => {
-    // Cyclic source trajectory between -80m and +80m
-    const travelSpan = 160;
-    const cycleTime = travelSpan / Math.max(1, Math.abs(sourceSpeed));
-    const modTime = clock.time % cycleTime;
-    const srcX = -80 + modTime * sourceSpeed;
-    // Observer position responds to observer speed
-    const obsX = 20 + (observerSpeed !== 0 ? (((clock.time * observerSpeed) % 80 + 80) % 80 - 40) : 0);
-
-    const st = calculateDoppler(srcX, obsX, sourceSpeed, observerSpeed, sourceFreq, soundSpeed);
-    setCurrentState(st);
-
     setDataBuffer((prev) => {
+      if (prev.length > 0 && Math.abs(prev[prev.length - 1].t - clock.time) < 0.0001) {
+        return prev;
+      }
       const newPt: DataPoint = {
         t: clock.time,
-        fObs: st.observedFreq,
+        fObs: currentState.observedFreq,
         fSource: sourceFreq,
       };
       const updated = [...prev, newPt];
       return updated.length > 300 ? updated.slice(-300) : updated;
     });
-  }, [clock.time, sourceSpeed, observerSpeed, sourceFreq, soundSpeed]);
+  }, [clock.time, currentState.observedFreq, sourceFreq]);
 
   // Setup Three.js Scene
   useEffect(() => {
@@ -310,9 +356,10 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
 
@@ -331,7 +378,7 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
         }
       }
 
-      const t = clock.time;
+      const t = timeRef.current;
 
       // Scaled world positions (1 unit in 3D = 10 meters)
       const scalePos = 0.15;
@@ -422,7 +469,7 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, clock.showVectors, sourceSpeed, observerSpeed, soundSpeed]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, clock.showVectors, sourceSpeed, observerSpeed, soundSpeed]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'fObs', label: 'Frequência Percebida f_obs', color: '#38bdf8', unit: 'Hz' },
@@ -491,183 +538,233 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({ onOpenEx
           </div>
         </div>
 
-        {/* Controls Deck */}
-        <div className="w-full md:w-80 bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[360px] md:max-h-none shrink-0">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros Acústicos</span>
-            </div>
+        {/* Side Panel: Tabs for Controls and Graphs */}
+        <div className="w-full md:w-96 lg:w-[420px] bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col h-full overflow-hidden shrink-0">
+          <div className="flex items-center p-2.5 border-b border-slate-800 bg-slate-950/60 gap-1.5 shrink-0">
+            <button
+              onClick={() => setActiveSideTab('controls')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'controls'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Parâmetros</span>
+            </button>
+            <button
+              onClick={() => setActiveSideTab('graphs')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'graphs'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Gráficos em Tempo Real</span>
+            </button>
           </div>
 
-          {/* Audio Synthesis Consent & Controls */}
-          <div className="flex flex-col gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                {audioActive ? <Volume2 className="w-4 h-4 text-cyan-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-                Síntese de Áudio Web:
-              </span>
-              <button
-                onClick={() => setAudioActive(!audioActive)}
-                className={`px-3 py-1 rounded text-xs font-semibold transition-colors border ${
-                  audioActive
-                    ? 'bg-cyan-500 border-cyan-400 text-slate-950'
-                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
-                }`}
-              >
-                {audioActive ? 'Desativar Som' : 'Ativar Áudio'}
-              </button>
-            </div>
+          {/* Tab 1: Parameters */}
+          {activeSideTab === 'controls' && (
+            <div className="p-3.5 flex flex-col gap-3.5 overflow-y-auto flex-1">
+              {/* Classic Didactic Presets Bar */}
+              <ClassicPresetsBar
+                moduleId="doppler"
+                onApplyPreset={applyPreset}
+                currentParams={{ sourceSpeed, observerSpeed, sourceFreq, isBeatsMode, beatsFreq2 }}
+              />
 
-            {audioActive && (
-              <div className="flex flex-col gap-1 pt-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Volume do Laboratório:</span>
-                  <span className="font-mono text-cyan-400">{Math.round(volume * 100)}%</span>
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros Acústicos</span>
+                <span className="text-[10px] text-cyan-400 font-mono">3D Doppler</span>
+              </div>
+
+              {/* Audio Synthesis Consent & Controls */}
+              <div className="flex flex-col gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                    {audioActive ? <Volume2 className="w-4 h-4 text-cyan-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
+                    Síntese de Áudio Web:
+                  </span>
+                  <button
+                    onClick={() => setAudioActive(!audioActive)}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition-colors border cursor-pointer ${
+                      audioActive
+                        ? 'bg-cyan-500 border-cyan-400 text-slate-950'
+                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {audioActive ? 'Desativar Som' : 'Ativar Áudio'}
+                  </button>
+                </div>
+
+                {audioActive && (
+                  <div className="flex flex-col gap-1 pt-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>Volume do Laboratório:</span>
+                      <span className="font-mono text-cyan-400">{Math.round(volume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1.0"
+                      step="0.05"
+                      value={volume}
+                      onChange={(e) => setVolume(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-500 h-1 bg-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Source Velocity (v_f) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Velocidade da Fonte (vf):</span>
+                  <span className="font-mono text-cyan-400 font-medium">
+                    {sourceSpeed.toFixed(0)} m/s ({(sourceSpeed * 3.6).toFixed(0)} km/h)
+                  </span>
                 </div>
                 <input
                   type="range"
                   min="0"
-                  max="1.0"
-                  step="0.05"
-                  value={volume}
-                  onChange={(e) => setVolume(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-1 bg-slate-800 rounded cursor-pointer"
+                  max="120"
+                  step="5"
+                  value={sourceSpeed}
+                  onChange={(e) => setSourceSpeed(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
                 />
               </div>
-            )}
-          </div>
 
-          {/* Source Velocity (v_f) */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Velocidade da Fonte (vf):</span>
-              <span className="font-mono text-cyan-400 font-medium">
-                {sourceSpeed.toFixed(0)} m/s ({(sourceSpeed * 3.6).toFixed(0)} km/h)
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="120"
-              step="5"
-              value={sourceSpeed}
-              onChange={(e) => setSourceSpeed(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Observer Velocity (v_o) */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Velocidade do Observador (vo):</span>
-              <span className="font-mono text-emerald-400 font-medium">
-                {observerSpeed >= 0 ? `+${observerSpeed.toFixed(0)}` : observerSpeed.toFixed(0)} m/s ({(observerSpeed * 3.6).toFixed(0)} km/h)
-              </span>
-            </div>
-            <input
-              type="range"
-              min="-60"
-              max="60"
-              step="5"
-              value={observerSpeed}
-              onChange={(e) => setObserverSpeed(parseFloat(e.target.value))}
-              className="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-              <span>-60 m/s (esq)</span>
-              <span>0 (repouso)</span>
-              <span>+60 m/s (dir)</span>
-            </div>
-          </div>
-
-          {/* Emitted Frequency (f_0) */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Frequência Emitida (f₀):</span>
-              <span className="font-mono text-cyan-400 font-medium">{sourceFreq.toFixed(0)} Hz</span>
-            </div>
-            <input
-              type="range"
-              min="100"
-              max="1200"
-              step="20"
-              value={sourceFreq}
-              onChange={(e) => setSourceFreq(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Beats Mode Toggle */}
-          <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-purple-300 font-medium flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5" />
-                Fenômeno de Batimentos:
-              </span>
-              <input
-                type="checkbox"
-                checked={isBeatsMode}
-                onChange={(e) => setIsBeatsMode(e.target.checked)}
-                className="rounded accent-purple-500 cursor-pointer"
-              />
-            </div>
-
-            {isBeatsMode && (
-              <div className="flex flex-col gap-2 bg-purple-950/20 p-2 rounded border border-purple-900/40">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Freq. 2 (f₂):</span>
-                    <span className="font-mono text-purple-400">{beatsFreq2.toFixed(1)} Hz</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="430"
-                    max="450"
-                    step="0.5"
-                    value={beatsFreq2}
-                    onChange={(e) => setBeatsFreq2(parseFloat(e.target.value))}
-                    className="w-full accent-purple-500 h-1 bg-slate-800 rounded cursor-pointer"
-                  />
+              {/* Observer Velocity (v_o) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Velocidade do Observador (vo):</span>
+                  <span className="font-mono text-emerald-400 font-medium">
+                    {observerSpeed >= 0 ? `+${observerSpeed.toFixed(0)}` : observerSpeed.toFixed(0)} m/s ({(observerSpeed * 3.6).toFixed(0)} km/h)
+                  </span>
                 </div>
-                <div className="text-[11px] font-mono text-purple-300">
-                  Frequência de Batimento: f_bat = |f₁ - f₂| = {Math.abs(sourceFreq - beatsFreq2).toFixed(1)} Hz
+                <input
+                  type="range"
+                  min="-60"
+                  max="60"
+                  step="5"
+                  value={observerSpeed}
+                  onChange={(e) => setObserverSpeed(parseFloat(e.target.value))}
+                  className="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                  <span>-60 m/s (esq)</span>
+                  <span>0 (repouso)</span>
+                  <span>+60 m/s (dir)</span>
                 </div>
               </div>
-            )}
-          </div>
 
-          {clock.showFormulas && (
-            <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equação do Efeito Doppler</span>
-              <KaTeXMath
-                math="f_{\text{obs}} = f_0 \left(\frac{v_{\text{som}} \pm v_{\text{obs}}}{v_{\text{som}} \mp v_{\text{fonte}}}\right)"
-                block
+              {/* Emitted Frequency (f_0) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Frequência Emitida (f₀):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{sourceFreq.toFixed(0)} Hz</span>
+                </div>
+                <input
+                  type="range"
+                  min="100"
+                  max="1200"
+                  step="20"
+                  value={sourceFreq}
+                  onChange={(e) => setSourceFreq(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Beats Mode Toggle */}
+              <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-purple-300 font-medium flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5" />
+                    Fenômeno de Batimentos:
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isBeatsMode}
+                    onChange={(e) => setIsBeatsMode(e.target.checked)}
+                    className="rounded accent-purple-500 cursor-pointer"
+                  />
+                </div>
+
+                {isBeatsMode && (
+                  <div className="flex flex-col gap-2 bg-purple-950/20 p-2 rounded border border-purple-900/40">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Freq. 2 (f₂):</span>
+                        <span className="font-mono text-purple-400">{beatsFreq2.toFixed(1)} Hz</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="430"
+                        max="450"
+                        step="0.5"
+                        value={beatsFreq2}
+                        onChange={(e) => setBeatsFreq2(parseFloat(e.target.value))}
+                        className="w-full accent-purple-500 h-1 bg-slate-800 rounded cursor-pointer"
+                      />
+                    </div>
+                    <div className="text-[11px] font-mono text-purple-300">
+                      Frequência de Batimento: f_bat = |f₁ - f₂| = {Math.abs(sourceFreq - beatsFreq2).toFixed(1)} Hz
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {clock.showFormulas && (
+                <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equação do Efeito Doppler</span>
+                  <KaTeXMath
+                    math="f_{\text{obs}} = f_0 \left(\frac{v_{\text{som}} \pm v_{\text{obs}}}{v_{\text{som}} \mp v_{\text{fonte}}}\right)"
+                    block
+                  />
+                  <KaTeXMath math="\lambda_{\text{frente}} = \frac{v_{\text{som}} - v_f}{f_0}" block />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Graphs */}
+          {activeSideTab === 'graphs' && (
+            <div className="p-3.5 flex flex-col gap-3 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">Frequência Percebida f_obs(t)</span>
+                <span className="text-[10px] font-mono text-cyan-400">Tempo Real</span>
+              </div>
+
+              <ScientificChart
+                data={dataBuffer}
+                series={chartSeries}
+                currentTime={clock.time}
+                height={260}
+                title="Desvio de Frequência Percebida f_obs(t) vs Frequência Emitida f₀"
               />
-              <KaTeXMath math="\lambda_{\text{frente}} = \frac{v_{\text{som}} - v_f}{f_0}" block />
+
+              <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-800/80 flex flex-col gap-1">
+                <span className="font-semibold text-slate-300">Comportamento Acústico:</span>
+                <span>• Na aproximação da fonte, as frentes de onda se comprimem e o som percebido é mais agudo (f_obs &gt; f₀).</span>
+                <span>• No afastamento, o comprimento de onda aparente se dilata e o som fica mais grave (f_obs &lt; f₀).</span>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {clock.showGraphs && (
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950">
-          <ScientificChart
-            data={dataBuffer}
-            series={chartSeries}
-            currentTime={clock.time}
-            height={140}
-            title="Desvio de Frequência Percebida f_obs(t) vs Frequência Emitida f₀"
-          />
-        </div>
-      )}
 
       <div className="p-3 bg-slate-950 border-t border-slate-800/80">
         <PlaybackBar
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

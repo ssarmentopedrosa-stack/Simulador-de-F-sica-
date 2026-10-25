@@ -67,7 +67,88 @@ export const TeacherModeModal: React.FC<TeacherModeModalProps> = ({
       'Qual a condição geométrica para que a difração ao redor de um obstáculo seja facilmente observável no cotidiano?',
       'Por que o sinal Wi-Fi de 2,4 GHz contorna melhor as paredes da casa do que o de 5,0 GHz?',
     ],
+    work_power: [
+      'Por que uma força aplicada a 90° em relação ao deslocamento realiza trabalho nulo, mesmo que sua intensidade seja enorme?',
+      'Como o Teorema da Energia Cinética unifica as Leis de Newton com o conceito de energia mecânica?',
+      'Qual a distinção física entre a potência média necessária para realizar uma tarefa e a potência instantânea do motor?',
+    ],
+    energy_conservation: [
+      'Por que a altura de largada para completar um looping vertical precisa ser de no mínimo 2,5 vezes o raio da curva sem atrito?',
+      'Em que ponto da montanha-russa os passageiros experimentam a maior sensação de peso aparente (maior valor de N)?',
+      'Quando há atrito nos trilhos, a energia mecânica desaparece ou é convertida em energia térmica e sonora?',
+    ],
+    impulse_momentum: [
+      'Como o Teorema do Impulso explica por que os carros modernos são projetados para amassar em vez de serem indeformáveis?',
+      'Por que o airbag reduz drasticamente as lesões no crânio sem alterar o valor do impulso total transferido ao corpo?',
+      'Qual a relação entre a área sob a curva do gráfico Força × tempo e a quantidade de movimento do passageiro?',
+    ],
+    collisions: [
+      'Por que o momento linear total do sistema se conserva sempre em colisões, mas a energia cinética só se conserva no caso elástico?',
+      'Em uma colisão perfeitamente inelástica entre dois corpos de massas iguais, por que exatamente 50% da energia cinética é dissipada?',
+      'Em mesas de bilhar e choques 2D, como decompor a conservação do momento nas direções normal e tangencial ao impacto?',
+    ],
+    density_pressure: [
+      'Por que uma pessoa de salto alto afunda mais na terra fofa do que um elefante de várias toneladas com patas largas?',
+      'Como a pressão mecânica (P = F/A) difere conceitualmente da densidade volumétrica (ρ = m/V)?',
+      'Como a distribuição da área de apoio é utilizada na engenharia civil para calcular sapatas e fundações de edifícios?',
+    ],
+    stevin_theorem: [
+      'Por que a pressão no fundo de uma piscina de 3 metros de profundidade é a mesma no meio ou encostado na borda?',
+      'Em vasos comunicantes com formatos absurdamente diferentes (cilíndrico, cônico, espiral), por que a água atinge rigorosamente a mesma altura?',
+      'Como funciona o tubo em U para determinar experimentalmente a densidade de um óleo desconhecido usando água?',
+    ],
+    pascal_principle: [
+      'Se uma prensa hidráulica multiplica a força aplicada por 20 vezes, por que ela NÃO viola o Princípio da Conservação da Energia?',
+      'Como o freio hidráulico de um carro transmite a força do pedal para as quatro rodas simultaneamente?',
+      'Qual o papel fundamental da incompressibilidade do fluido na transmissão integral da pressão em circuitos fechados?',
+    ],
+    buoyancy_archimedes: [
+      'Como um navio de aço de 100.000 toneladas flutua no mar enquanto uma pequena agulha de aço de 1 grama afunda de imediato?',
+      'Por que a leitura de um dinamômetro conectado a uma pedra diminui quando ela é mergulhada na água (peso aparente)?',
+      'Por que um iceberg flutua com aproximadamente 90% do seu volume submerso e apenas 10% visível na superfície?',
+    ],
+    ideal_gas: [
+      'Por que a pressão de um gás em recipiente rígido aumenta quando ele é aquecido, sob o ponto de vista microscópico das colisões moleculares?',
+      'Em uma transformação isotérmica, por que a curva P × V é uma hipérbole equilátera e como a energia cinética média das partículas se comporta?',
+      'Qual a diferença física entre graus de liberdade translacionais de um gás monoatômico (3) e diatômico (5)?',
+    ],
+    first_law_thermodynamics: [
+      'Ao comprimir bruscamente o ar em uma bomba de bicicleta ou pistão de fogo (compressão adiabática), por que a temperatura do gás sobe sem receber calor?',
+      'Em uma expansão isobárica, por que o calor absorvido é dividido entre realizar trabalho mecânico externo e elevar a temperatura interna?',
+      'Por que em qualquer ciclo termodinâmico fechado a variação total de energia interna é nula (ΔU = 0)?',
+    ],
+    carnot_heat_engines: [
+      'Por que é impossível construir uma máquina térmica com 100% de rendimento, mesmo sem qualquer atrito mecânico (Enunciado de Kelvin-Planck da 2ª Lei)?',
+      'Qual a razão matemática de o Ciclo de Carnot operar estritamente entre duas isotérmicas reversíveis e duas adiabáticas reversíveis?',
+      'Como a Segunda Lei da Termodinâmica fundamenta a seta do tempo e o conceito de entropia universal?',
+    ],
+    calorimetry: [
+      'Por que a temperatura de uma mistura de gelo e água permanece rigorosamente em 0 °C durante toda a fusão, mesmo recebendo calor constante da chama?',
+      'Como o elevado calor específico da água (1 cal/g·°C) modera o clima costeiro e impede variações térmicas bruscas em seres vivos?',
+      'Qual o papel do vaso de Dewar (vácuo e paredes espelhadas) em anular as três formas de propagação de calor: condução, convecção e irradiação?',
+    ],
+    coulomb_law: [
+      'Por que a força eletrostática entre duas cargas obedece à 3ª Lei de Newton (par ação-reação) mesmo quando uma das cargas é 1.000 vezes maior que a outra?',
+      'Se a distância entre duas cargas for duplicada, por que a força cai para um quarto e não para a metade (lei do inverso do quadrado)?',
+      'Como a presença de um meio dielétrico (água, óleo, vácuo) altera a constante eletrostática efetiva k = 1/(4πε)?',
+    ],
+    electric_field_lines: [
+      'Por que duas linhas de campo elétrico NUNCA podem se cruzar no espaço?',
+      'Qual a relação entre a densidade espacial das linhas de campo e a intensidade do vetor campo elétrico |E|?',
+      'Como demonstrar que o campo elétrico no ponto médio de duas cargas positivas iguais é estritamente nulo?',
+    ],
+    electric_potential: [
+      'Por que o trabalho elétrico sobre uma carga ao longo de uma superfície equipotencial fechada é rigorosamente zero?',
+      'Qual a diferença conceitual entre potencial elétrico V (grandeza escalar em Volts) e campo elétrico E (grandeza vetorial em N/C)?',
+      'Como demonstrar que o vetor campo elétrico é sempre perpendicular às superfícies equipotenciais e aponta no sentido do potencial decrescente?',
+    ],
+    parallel_plate_capacitor: [
+      'Por que a inserção de um material dielétrico com κ > 1 aumenta a capacitância do capacitor mantendo as dimensões geométricas idênticas?',
+      'Se o capacitor for desconectado da fonte antes de afastar as placas, o que ocorre com a carga Q, a tensão V e a energia armazenada U?',
+      'Por que o campo elétrico é uniforme no interior das placas paralelas, exceto pelas bordas (efeito de borda)?',
+    ],
   };
+
 
   const prompts = discussionPrompts[currentMod.id] || [];
 

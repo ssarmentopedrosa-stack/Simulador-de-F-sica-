@@ -5,21 +5,62 @@ import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../..
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, HelpCircle, Radio, Crosshair } from 'lucide-react';
+import { Sliders, HelpCircle, Radio, Crosshair, Activity } from 'lucide-react';
+
+import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
 interface Interference3DProps {
   onOpenExperiment?: () => void;
+  initialParams?: Record<string, any>;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
-export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment }) => {
+export const Interference3D: React.FC<Interference3DProps> = ({
+  onOpenExperiment,
+  initialParams,
+  onParamsChange,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // Source Parameters
-  const [sourceDistance, setSourceDistance] = useState<number>(3.0);
-  const [frequency, setFrequency] = useState<number>(1.2);
-  const [amplitude, setAmplitude] = useState<number>(0.6);
-  const [phaseDiffDeg, setPhaseDiffDeg] = useState<number>(0);
-  const [probePos, setProbePos] = useState<{ x: number; y: number }>({ x: 1.5, y: 2.0 });
+  const [sourceDistance, setSourceDistance] = useState<number>(
+    () => (initialParams?.sourceDistance != null ? Number(initialParams.sourceDistance) : 3.0)
+  );
+  const [frequency, setFrequency] = useState<number>(
+    () => (initialParams?.frequency != null ? Number(initialParams.frequency) : 1.2)
+  );
+  const [amplitude, setAmplitude] = useState<number>(
+    () => (initialParams?.amplitude != null ? Number(initialParams.amplitude) : 0.6)
+  );
+  const [phaseDiffDeg, setPhaseDiffDeg] = useState<number>(
+    () => (initialParams?.phaseDiffDeg != null ? Number(initialParams.phaseDiffDeg) : 0)
+  );
+  const [probePos, setProbePos] = useState<{ x: number; y: number }>(
+    () => (initialParams?.probePos != null ? initialParams.probePos : { x: 1.5, y: 2.0 })
+  );
+  const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
+
+  const applyPreset = useCallback((p: Record<string, any>) => {
+    if (p.sourceDistance !== undefined) setSourceDistance(Number(p.sourceDistance));
+    if (p.frequency !== undefined) setFrequency(Number(p.frequency));
+    if (p.amplitude !== undefined) setAmplitude(Number(p.amplitude));
+    if (p.phaseDiffDeg !== undefined) setPhaseDiffDeg(Number(p.phaseDiffDeg));
+    if (p.probePos !== undefined) setProbePos(p.probePos);
+  }, []);
+
+  useEffect(() => {
+    onParamsChange?.({ sourceDistance, frequency, amplitude, phaseDiffDeg, probePos });
+  }, [sourceDistance, frequency, amplitude, phaseDiffDeg, probePos, onParamsChange]);
+
+  useEffect(() => {
+    if (initialParams) {
+      if (initialParams.sourceDistance !== undefined) setSourceDistance(Number(initialParams.sourceDistance));
+      if (initialParams.frequency !== undefined) setFrequency(Number(initialParams.frequency));
+      if (initialParams.amplitude !== undefined) setAmplitude(Number(initialParams.amplitude));
+      if (initialParams.phaseDiffDeg !== undefined) setPhaseDiffDeg(Number(initialParams.phaseDiffDeg));
+      if (initialParams.probePos !== undefined) setProbePos(initialParams.probePos);
+    }
+  }, [initialParams]);
 
   // Clock
   const [clock, setClock] = useState<SimulationClock>({
@@ -390,128 +431,175 @@ export const Interference3D: React.FC<Interference3DProps> = ({ onOpenExperiment
           </div>
         </div>
 
-        {/* Controls Deck */}
-        <div className="w-full md:w-80 bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[360px] md:max-h-none shrink-0">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros das Fontes</span>
-            </div>
+        {/* Side Panel: Tabs for Controls and Graphs */}
+        <div className="w-full md:w-96 lg:w-[420px] bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col h-full overflow-hidden shrink-0">
+          <div className="flex items-center p-2.5 border-b border-slate-800 bg-slate-950/60 gap-1.5 shrink-0">
+            <button
+              onClick={() => setActiveSideTab('controls')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'controls'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Parâmetros</span>
+            </button>
+            <button
+              onClick={() => setActiveSideTab('graphs')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'graphs'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Gráficos em Tempo Real</span>
+            </button>
           </div>
 
-          {/* Source Distance (d) */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Distância Entre Fontes (d):</span>
-              <span className="font-mono text-cyan-400 font-medium">{sourceDistance.toFixed(2)} m</span>
-            </div>
-            <input
-              type="range"
-              min="1.0"
-              max="5.0"
-              step="0.2"
-              value={sourceDistance}
-              onChange={(e) => setSourceDistance(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Frequency */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Frequência (f):</span>
-              <span className="font-mono text-cyan-400 font-medium">{frequency.toFixed(2)} Hz</span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="2.5"
-              step="0.1"
-              value={frequency}
-              onChange={(e) => setFrequency(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Phase Difference */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Diferença de Fase (Δϕ):</span>
-              <span className="font-mono text-purple-400 font-medium">{phaseDiffDeg}°</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="360"
-              step="15"
-              value={phaseDiffDeg}
-              onChange={(e) => setPhaseDiffDeg(parseInt(e.target.value))}
-              className="w-full accent-purple-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Probe Position X & Y */}
-          <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
-            <span className="text-xs text-amber-400 font-semibold flex items-center gap-1.5">
-              <Crosshair className="w-3.5 h-3.5" />
-              Posição do Sensor de Medição:
-            </span>
-
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>Coord. X:</span>
-                <span className="font-mono text-amber-300">{probePos.x.toFixed(2)} m</span>
-              </div>
-              <input
-                type="range"
-                min="-4.0"
-                max="4.0"
-                step="0.2"
-                value={probePos.x}
-                onChange={(e) => setProbePos((p) => ({ ...p, x: parseFloat(e.target.value) }))}
-                className="w-full accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+          {/* Tab 1: Parameters */}
+          {activeSideTab === 'controls' && (
+            <div className="p-3.5 flex flex-col gap-3.5 overflow-y-auto flex-1">
+              {/* Classic Didactic Presets Bar */}
+              <ClassicPresetsBar
+                moduleId="interference"
+                onApplyPreset={applyPreset}
+                currentParams={{ sourceDistance, frequency, amplitude, phaseDiffDeg, probePos }}
               />
-            </div>
 
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>Coord. Y:</span>
-                <span className="font-mono text-amber-300">{probePos.y.toFixed(2)} m</span>
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros das Fontes</span>
+                <span className="text-[10px] text-cyan-400 font-mono">3D Ripple Tank</span>
               </div>
-              <input
-                type="range"
-                min="-3.5"
-                max="3.5"
-                step="0.2"
-                value={probePos.y}
-                onChange={(e) => setProbePos((p) => ({ ...p, y: parseFloat(e.target.value) }))}
-                className="w-full accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
-              />
-            </div>
-          </div>
 
-          {clock.showFormulas && (
-            <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Critérios de Interferência</span>
-              <KaTeXMath math="y_{\text{res}} = y_1 + y_2" block />
-              <KaTeXMath math="\Delta r = n\lambda \implies \text{Construtiva}" block />
-              <KaTeXMath math="\Delta r = \left(n + \frac{1}{2}\right)\lambda \implies \text{Destrutiva}" block />
+              {/* Source Distance (d) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Distância Entre Fontes (d):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{sourceDistance.toFixed(2)} m</span>
+                </div>
+                <input
+                  type="range"
+                  min="1.0"
+                  max="5.0"
+                  step="0.2"
+                  value={sourceDistance}
+                  onChange={(e) => setSourceDistance(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Frequency */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Frequência (f):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{frequency.toFixed(2)} Hz</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.5"
+                  step="0.1"
+                  value={frequency}
+                  onChange={(e) => setFrequency(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Phase Difference */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Diferença de Fase (Δϕ):</span>
+                  <span className="font-mono text-purple-400 font-medium">{phaseDiffDeg}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="360"
+                  step="15"
+                  value={phaseDiffDeg}
+                  onChange={(e) => setPhaseDiffDeg(parseInt(e.target.value))}
+                  className="w-full accent-purple-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Probe Position X & Y */}
+              <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                <span className="text-xs text-amber-400 font-semibold flex items-center gap-1.5">
+                  <Crosshair className="w-3.5 h-3.5" />
+                  Posição do Sensor de Medição:
+                </span>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Coord. X:</span>
+                    <span className="font-mono text-amber-300">{probePos.x.toFixed(2)} m</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-4.0"
+                    max="4.0"
+                    step="0.2"
+                    value={probePos.x}
+                    onChange={(e) => setProbePos((p) => ({ ...p, x: parseFloat(e.target.value) }))}
+                    className="w-full accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Coord. Y:</span>
+                    <span className="font-mono text-amber-300">{probePos.y.toFixed(2)} m</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-3.5"
+                    max="3.5"
+                    step="0.2"
+                    value={probePos.y}
+                    onChange={(e) => setProbePos((p) => ({ ...p, y: parseFloat(e.target.value) }))}
+                    className="w-full accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {clock.showFormulas && (
+                <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Critérios de Interferência</span>
+                  <KaTeXMath math="y_{\text{res}} = y_1 + y_2" block />
+                  <KaTeXMath math="\Delta r = n\lambda \implies \text{Construtiva}" block />
+                  <KaTeXMath math="\Delta r = \left(n + \frac{1}{2}\right)\lambda \implies \text{Destrutiva}" block />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Graphs */}
+          {activeSideTab === 'graphs' && (
+            <div className="p-3.5 flex flex-col gap-3 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">Superposição no Sensor</span>
+                <span className="text-[10px] font-mono text-cyan-400">Tempo Real</span>
+              </div>
+
+              <ScientificChart
+                data={dataBuffer}
+                series={chartSeries}
+                currentTime={clock.time}
+                height={260}
+                title="Superposição das Duas Ondas no Ponto do Sensor y₁(t) + y₂(t)"
+              />
+
+              <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-800/80 flex flex-col gap-1">
+                <span className="font-semibold text-slate-300">Padrão de Franjas:</span>
+                <span>• Nos ventres (interferência construtiva), as amplitudes se somam em fase (A_res = A1 + A2).</span>
+                <span>• Nos nós (interferência destrutiva), a diferença de percurso Δr anula a oscilação resultante.</span>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {clock.showGraphs && (
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950">
-          <ScientificChart
-            data={dataBuffer}
-            series={chartSeries}
-            currentTime={clock.time}
-            height={140}
-            title="Superposição das Duas Ondas no Ponto do Sensor y₁(t) + y₂(t)"
-          />
-        </div>
-      )}
 
       <div className="p-3 bg-slate-950 border-t border-slate-800/80">
         <PlaybackBar

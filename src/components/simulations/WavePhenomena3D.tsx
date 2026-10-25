@@ -5,31 +5,87 @@ import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../..
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, HelpCircle, Layers } from 'lucide-react';
+import { Sliders, HelpCircle, Layers, Activity } from 'lucide-react';
+import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
 interface WavePhenomena3DProps {
   onOpenExperiment?: () => void;
+  initialParams?: Record<string, any>;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
 type PhenomenonMode = 'reflection' | 'refraction' | 'diffraction';
 
-export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperiment }) => {
+export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({
+  onOpenExperiment,
+  initialParams,
+  onParamsChange,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // Phenomenon selection
-  const [phenomenon, setPhenomenon] = useState<PhenomenonMode>('reflection');
+  const [phenomenon, setPhenomenon] = useState<PhenomenonMode>(
+    () => (initialParams?.phenomenon as PhenomenonMode) || 'reflection'
+  );
+  const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
 
   // Reflection parameters
-  const [isFixedEnd, setIsFixedEnd] = useState<boolean>(true);
+  const [isFixedEnd, setIsFixedEnd] = useState<boolean>(
+    () => (initialParams?.isFixedEnd != null ? Boolean(initialParams.isFixedEnd) : true)
+  );
 
   // Refraction parameters
-  const [v1, setV1] = useState<number>(4.0); // m/s (Medium 1)
-  const [v2, setV2] = useState<number>(2.0); // m/s (Medium 2)
-  const [refractFreq, setRefractFreq] = useState<number>(1.0); // Hz
+  const [v1, setV1] = useState<number>(
+    () => (initialParams?.v1 != null ? Number(initialParams.v1) : 4.0)
+  );
+  const [v2, setV2] = useState<number>(
+    () => (initialParams?.v2 != null ? Number(initialParams.v2) : 2.0)
+  );
+  const [refractFreq, setRefractFreq] = useState<number>(
+    () => (initialParams?.refractFreq != null ? Number(initialParams.refractFreq) : 1.0)
+  );
 
   // Diffraction parameters
-  const [slitWidth, setSlitWidth] = useState<number>(1.2); // m
-  const [diffractWavelength, setDiffractWavelength] = useState<number>(1.0); // m
+  const [slitWidth, setSlitWidth] = useState<number>(
+    () => (initialParams?.slitWidth != null ? Number(initialParams.slitWidth) : 1.2)
+  );
+  const [diffractWavelength, setDiffractWavelength] = useState<number>(
+    () => (initialParams?.diffractWavelength != null ? Number(initialParams.diffractWavelength) : 1.0)
+  );
+
+  const applyPreset = useCallback((p: Record<string, any>) => {
+    if (p.phenomenon !== undefined) setPhenomenon(p.phenomenon);
+    if (p.isFixedEnd !== undefined) setIsFixedEnd(Boolean(p.isFixedEnd));
+    if (p.v1 !== undefined) setV1(Number(p.v1));
+    if (p.v2 !== undefined) setV2(Number(p.v2));
+    if (p.refractFreq !== undefined) setRefractFreq(Number(p.refractFreq));
+    if (p.slitWidth !== undefined) setSlitWidth(Number(p.slitWidth));
+    if (p.diffractWavelength !== undefined) setDiffractWavelength(Number(p.diffractWavelength));
+  }, []);
+
+  useEffect(() => {
+    onParamsChange?.({
+      phenomenon,
+      isFixedEnd,
+      v1,
+      v2,
+      refractFreq,
+      slitWidth,
+      diffractWavelength,
+    });
+  }, [phenomenon, isFixedEnd, v1, v2, refractFreq, slitWidth, diffractWavelength, onParamsChange]);
+
+  useEffect(() => {
+    if (initialParams) {
+      if (initialParams.phenomenon !== undefined) setPhenomenon(initialParams.phenomenon);
+      if (initialParams.isFixedEnd !== undefined) setIsFixedEnd(Boolean(initialParams.isFixedEnd));
+      if (initialParams.v1 !== undefined) setV1(Number(initialParams.v1));
+      if (initialParams.v2 !== undefined) setV2(Number(initialParams.v2));
+      if (initialParams.refractFreq !== undefined) setRefractFreq(Number(initialParams.refractFreq));
+      if (initialParams.slitWidth !== undefined) setSlitWidth(Number(initialParams.slitWidth));
+      if (initialParams.diffractWavelength !== undefined) setDiffractWavelength(Number(initialParams.diffractWavelength));
+    }
+  }, [initialParams]);
 
   // Simulation Clock
   const [clock, setClock] = useState<SimulationClock>({
@@ -62,15 +118,18 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
   const isDraggingRef = useRef<boolean>(false);
   const prevMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  const timeRef = useRef<number>(clock.time);
+  timeRef.current = clock.time;
+
   const handleReset = useCallback(() => {
+    timeRef.current = 0;
     setClock((prev) => ({ ...prev, time: 0 }));
     setDataBuffer([]);
   }, []);
 
-  // Update telemetry for charts
+  // Update telemetry for static diffraction chart
   useEffect(() => {
     if (phenomenon === 'diffraction') {
-      // Diffraction intensity profile versus angle theta (-60 to +60 deg)
       const pts: DataPoint[] = [];
       for (let angleDeg = -60; angleDeg <= 60; angleDeg += 2) {
         const thetaRad = (angleDeg * Math.PI) / 180;
@@ -81,7 +140,12 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
         });
       }
       setDataBuffer(pts);
-    } else if (phenomenon === 'refraction') {
+    }
+  }, [phenomenon, slitWidth, diffractWavelength]);
+
+  // Update telemetry for time-dependent refraction & reflection charts
+  useEffect(() => {
+    if (phenomenon === 'refraction') {
       const lambda1 = v1 / refractFreq;
       const lambda2 = v2 / refractFreq;
       const pts: DataPoint[] = [];
@@ -95,18 +159,15 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
         pts.push({ t: x, profile: y });
       }
       setDataBuffer(pts);
-    } else {
-      // Reflection
+    } else if (phenomenon === 'reflection') {
       const pts: DataPoint[] = [];
       const pulseWidth = 0.8;
       const v = 3.0;
       const L = 4.0;
       for (let x = 0; x <= L; x += 0.08) {
-        // Incident pulse moving right
         const distInc = x - (clock.time * v) % (2 * L);
         const yInc = Math.exp(-Math.pow(distInc / pulseWidth, 2));
 
-        // Reflected pulse moving left
         const distRef = (2 * L - x) - (clock.time * v) % (2 * L);
         const sign = isFixedEnd ? -1 : 1;
         const yRef = sign * Math.exp(-Math.pow(distRef / pulseWidth, 2));
@@ -115,7 +176,7 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
       }
       setDataBuffer(pts);
     }
-  }, [phenomenon, clock.time, slitWidth, diffractWavelength, v1, v2, refractFreq, isFixedEnd]);
+  }, [phenomenon, clock.time, v1, v2, refractFreq, isFixedEnd]);
 
   // Setup Three.js Scene
   useEffect(() => {
@@ -258,9 +319,10 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
       lastTimestamp = timestamp;
 
       if (clock.isRunning) {
+        timeRef.current += Math.min(deltaSec, 0.1) * clock.speed;
         setClock((prev) => ({
           ...prev,
-          time: prev.time + Math.min(deltaSec, 0.1) * prev.speed,
+          time: timeRef.current,
         }));
       }
 
@@ -279,7 +341,7 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
         }
       }
 
-      const t = clock.time;
+      const t = timeRef.current;
 
       // Update visibility of scenario props
       if (slitObstacleGroupRef.current) {
@@ -383,7 +445,7 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [clock.isRunning, clock.speed, clock.time, clock.is2DView, phenomenon, slitWidth, diffractWavelength, v1, v2, refractFreq, isFixedEnd]);
+  }, [clock.isRunning, clock.speed, clock.is2DView, phenomenon, slitWidth, diffractWavelength, v1, v2, refractFreq, isFixedEnd]);
 
   // Chart configuration based on phenomenon
   const chartSeries: ChartSeries[] =
@@ -468,217 +530,281 @@ export const WavePhenomena3D: React.FC<WavePhenomena3DProps> = ({ onOpenExperime
           </div>
         </div>
 
-        {/* Controls Deck */}
-        <div className="w-full md:w-80 bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[360px] md:max-h-none shrink-0">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Fenômeno em Estudo</span>
-            </div>
-          </div>
-
-          {/* Phenomenon Switcher Tabs */}
-          <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-md border border-slate-800 text-xs">
+        {/* Side Panel: Tabs for Controls and Graphs */}
+        <div className="w-full md:w-96 lg:w-[420px] bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col h-full overflow-hidden shrink-0">
+          <div className="flex items-center p-2.5 border-b border-slate-800 bg-slate-950/60 gap-1.5 shrink-0">
             <button
-              onClick={() => setPhenomenon('reflection')}
-              className={`py-1.5 rounded font-medium transition-colors ${
-                phenomenon === 'reflection' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+              onClick={() => setActiveSideTab('controls')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'controls'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
             >
-              Reflexão
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Parâmetros</span>
             </button>
             <button
-              onClick={() => setPhenomenon('refraction')}
-              className={`py-1.5 rounded font-medium transition-colors ${
-                phenomenon === 'refraction' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+              onClick={() => setActiveSideTab('graphs')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'graphs'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
             >
-              Refração
-            </button>
-            <button
-              onClick={() => setPhenomenon('diffraction')}
-              className={`py-1.5 rounded font-medium transition-colors ${
-                phenomenon === 'diffraction' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Difração
+              <Activity className="w-3.5 h-3.5" />
+              <span>Gráficos em Tempo Real</span>
             </button>
           </div>
 
-          {/* Reflection Controls */}
-          {phenomenon === 'reflection' && (
-            <div className="flex flex-col gap-2.5 pt-1">
-              <span className="text-xs text-slate-400">Condição da Extremidade Terminal:</span>
-              <div className="grid grid-cols-2 gap-1.5">
+          {/* Tab 1: Parameters */}
+          {activeSideTab === 'controls' && (
+            <div className="p-3.5 flex flex-col gap-3.5 overflow-y-auto flex-1">
+              {/* Classic Didactic Presets Bar */}
+              <ClassicPresetsBar
+                moduleId="phenomena"
+                onApplyPreset={applyPreset}
+                currentParams={{
+                  phenomenon,
+                  isFixedEnd,
+                  v1,
+                  v2,
+                  refractFreq,
+                  slitWidth,
+                  diffractWavelength,
+                }}
+              />
+
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Fenômeno em Estudo</span>
+                <span className="text-[10px] text-cyan-400 font-mono">3D Óptica & Ondas</span>
+              </div>
+
+              {/* Phenomenon Switcher Tabs */}
+              <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-md border border-slate-800 text-xs">
                 <button
-                  onClick={() => setIsFixedEnd(true)}
-                  className={`px-3 py-2 rounded text-xs transition-colors border text-left ${
-                    isFixedEnd
-                      ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
-                      : 'bg-slate-950 border-slate-800 text-slate-400'
+                  onClick={() => setPhenomenon('reflection')}
+                  className={`py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                    phenomenon === 'reflection' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <div>Extremidade Fixa</div>
-                  <div className="text-[10px] text-slate-500">Inverte fase (180°)</div>
+                  Reflexão
                 </button>
                 <button
-                  onClick={() => setIsFixedEnd(false)}
-                  className={`px-3 py-2 rounded text-xs transition-colors border text-left ${
-                    !isFixedEnd
-                      ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
-                      : 'bg-slate-950 border-slate-800 text-slate-400'
+                  onClick={() => setPhenomenon('refraction')}
+                  className={`py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                    phenomenon === 'refraction' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <div>Extremidade Livre</div>
-                  <div className="text-[10px] text-slate-500">Mantém a fase (0°)</div>
+                  Refração
+                </button>
+                <button
+                  onClick={() => setPhenomenon('diffraction')}
+                  className={`py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                    phenomenon === 'diffraction' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Difração
                 </button>
               </div>
-            </div>
-          )}
 
-          {/* Refraction Controls */}
-          {phenomenon === 'refraction' && (
-            <div className="flex flex-col gap-3 pt-1">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Velocidade Meio 1 (v₁):</span>
-                  <span className="font-mono text-cyan-400 font-medium">{v1.toFixed(1)} m/s</span>
+              {/* Reflection Controls */}
+              {phenomenon === 'reflection' && (
+                <div className="flex flex-col gap-2.5 pt-1">
+                  <span className="text-xs text-slate-400">Condição da Extremidade Terminal:</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => setIsFixedEnd(true)}
+                      className={`px-3 py-2 rounded text-xs transition-colors border text-left cursor-pointer ${
+                        isFixedEnd
+                          ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div>Extremidade Fixa</div>
+                      <div className="text-[10px] text-slate-500">Inverte fase (180°)</div>
+                    </button>
+                    <button
+                      onClick={() => setIsFixedEnd(false)}
+                      className={`px-3 py-2 rounded text-xs transition-colors border text-left cursor-pointer ${
+                        !isFixedEnd
+                          ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 font-semibold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div>Extremidade Livre</div>
+                      <div className="text-[10px] text-slate-500">Mantém a fase (0°)</div>
+                    </button>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="1.0"
-                  max="6.0"
-                  step="0.5"
-                  value={v1}
-                  onChange={(e) => setV1(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Velocidade Meio 2 (v₂):</span>
-                  <span className="font-mono text-cyan-400 font-medium">{v2.toFixed(1)} m/s</span>
-                </div>
-                <input
-                  type="range"
-                  min="1.0"
-                  max="6.0"
-                  step="0.5"
-                  value={v2}
-                  onChange={(e) => setV2(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Frequência da Fonte (f):</span>
-                  <span className="font-mono text-cyan-400 font-medium">{refractFreq.toFixed(1)} Hz</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.5"
-                  step="0.1"
-                  value={refractFreq}
-                  onChange={(e) => setRefractFreq(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-                />
-                <span className="text-[10px] text-slate-500">
-                  A frequência permanece inalterada em ambos os meios.
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Diffraction Controls */}
-          {phenomenon === 'diffraction' && (
-            <div className="flex flex-col gap-3 pt-1">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Largura da Fenda (a):</span>
-                  <span className="font-mono text-cyan-400 font-medium">{slitWidth.toFixed(2)} m</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.4"
-                  max="3.0"
-                  step="0.1"
-                  value={slitWidth}
-                  onChange={(e) => setSlitWidth(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Comprimento de Onda (λ):</span>
-                  <span className="font-mono text-cyan-400 font-medium">{diffractWavelength.toFixed(2)} m</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.4"
-                  max="2.5"
-                  step="0.1"
-                  value={diffractWavelength}
-                  onChange={(e) => setDiffractWavelength(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-                />
-              </div>
-            </div>
-          )}
-
-          {clock.showFormulas && (
-            <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Relações Físicas</span>
-              {phenomenon === 'refraction' ? (
-                <>
-                  <KaTeXMath math="\frac{v_1}{v_2} = \frac{\lambda_1}{\lambda_2} = \frac{n_2}{n_1}" block />
-                  <KaTeXMath math="f_1 = f_2 = \text{constante}" block />
-                </>
-              ) : phenomenon === 'diffraction' ? (
-                <>
-                  <KaTeXMath math="I(\theta) = I_0 \left(\frac{\sin\beta}{\beta}\right)^2" block />
-                  <KaTeXMath math="\beta = \frac{\pi a}{\lambda}\sin\theta" block />
-                </>
-              ) : (
-                <>
-                  <KaTeXMath math="\text{Fixa: } \Delta\phi = \pi \text{ rad (inversão)}" block />
-                  <KaTeXMath math="\text{Livre: } \Delta\phi = 0 \text{ rad (concordância)}" block />
-                </>
               )}
+
+              {/* Refraction Controls */}
+              {phenomenon === 'refraction' && (
+                <div className="flex flex-col gap-3 pt-1">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Velocidade Meio 1 (v₁):</span>
+                      <span className="font-mono text-cyan-400 font-medium">{v1.toFixed(1)} m/s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="6.0"
+                      step="0.5"
+                      value={v1}
+                      onChange={(e) => setV1(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Velocidade Meio 2 (v₂):</span>
+                      <span className="font-mono text-cyan-400 font-medium">{v2.toFixed(1)} m/s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="6.0"
+                      step="0.5"
+                      value={v2}
+                      onChange={(e) => setV2(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Frequência da Fonte (f):</span>
+                      <span className="font-mono text-cyan-400 font-medium">{refractFreq.toFixed(1)} Hz</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.5"
+                      step="0.1"
+                      value={refractFreq}
+                      onChange={(e) => setRefractFreq(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                    <span className="text-[10px] text-slate-500">
+                      A frequência permanece inalterada em ambos os meios.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Diffraction Controls */}
+              {phenomenon === 'diffraction' && (
+                <div className="flex flex-col gap-3 pt-1">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Largura da Fenda (a):</span>
+                      <span className="font-mono text-cyan-400 font-medium">{slitWidth.toFixed(2)} m</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.4"
+                      max="3.0"
+                      step="0.1"
+                      value={slitWidth}
+                      onChange={(e) => setSlitWidth(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Comprimento de Onda (λ):</span>
+                      <span className="font-mono text-cyan-400 font-medium">{diffractWavelength.toFixed(2)} m</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.4"
+                      max="2.5"
+                      step="0.1"
+                      value={diffractWavelength}
+                      onChange={(e) => setDiffractWavelength(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {clock.showFormulas && (
+                <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Relações Físicas</span>
+                  {phenomenon === 'refraction' ? (
+                    <>
+                      <KaTeXMath math="\frac{v_1}{v_2} = \frac{\lambda_1}{\lambda_2} = \frac{n_2}{n_1}" block />
+                      <KaTeXMath math="f_1 = f_2 = \text{constante}" block />
+                    </>
+                  ) : phenomenon === 'diffraction' ? (
+                    <>
+                      <KaTeXMath math="I(\theta) = I_0 \left(\frac{\sin\beta}{\beta}\right)^2" block />
+                      <KaTeXMath math="\beta = \frac{\pi a}{\lambda}\sin\theta" block />
+                    </>
+                  ) : (
+                    <>
+                      <KaTeXMath math="\text{Fixa: } \Delta\phi = \pi \text{ rad (inversão)}" block />
+                      <KaTeXMath math="\text{Livre: } \Delta\phi = 0 \text{ rad (concordância)}" block />
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Graphs */}
+          {activeSideTab === 'graphs' && (
+            <div className="p-3.5 flex flex-col gap-3 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">
+                  {phenomenon === 'diffraction'
+                    ? 'Intensidade Difratada I(θ)'
+                    : phenomenon === 'refraction'
+                    ? 'Descontinuidade de Onda y(x)'
+                    : 'Pulso Refletido'}
+                </span>
+                <span className="text-[10px] font-mono text-cyan-400">Tempo Real</span>
+              </div>
+
+              <ScientificChart
+                data={dataBuffer}
+                series={chartSeries}
+                currentTime={clock.time}
+                height={260}
+                title={
+                  phenomenon === 'diffraction'
+                    ? 'Padrão Angular de Intensidade Difratada I(θ)'
+                    : phenomenon === 'refraction'
+                    ? 'Perfil Espacial da Onda com Descontinuidade de Velocidade y(x)'
+                    : 'Evolução Espacial do Pulso Refletido'
+                }
+                xLabel={phenomenon === 'diffraction' ? 'Ângulo θ' : 'Posição x'}
+                xUnit={phenomenon === 'diffraction' ? '°' : 'm'}
+              />
+
+              <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-800/80 flex flex-col gap-1">
+                <span className="font-semibold text-slate-300">Propriedade Física:</span>
+                <span>• Na difração, quanto mais próxima a largura da fenda (a) for de λ, mais intensa e aberta é a difração.</span>
+                <span>• Na refração, a frequência f é constante e a variação de velocidade altera o comprimento de onda λ.</span>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {clock.showGraphs && (
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950">
-          <ScientificChart
-            data={dataBuffer}
-            series={chartSeries}
-            currentTime={clock.time}
-            height={140}
-            title={
-              phenomenon === 'diffraction'
-                ? 'Padrão Angular de Intensidade Difratada I(θ)'
-                : phenomenon === 'refraction'
-                ? 'Perfil Espacial da Onda com Descontinuidade de Velocidade y(x)'
-                : 'Evolução Espacial do Pulso Refletido'
-            }
-            xLabel={phenomenon === 'diffraction' ? 'Ângulo θ' : 'Posição x'}
-            xUnit={phenomenon === 'diffraction' ? '°' : 'm'}
-          />
-        </div>
-      )}
 
       <div className="p-3 bg-slate-950 border-t border-slate-800/80">
         <PlaybackBar
           clock={clock}
           onTogglePlay={() => setClock((p) => ({ ...p, isRunning: !p.isRunning }))}
           onReset={handleReset}
-          onStepForward={() => setClock((p) => ({ ...p, time: p.time + 0.05 }))}
+          onStepForward={() => {
+            timeRef.current += 0.05;
+            setClock((p) => ({ ...p, time: timeRef.current }));
+          }}
           onChangeSpeed={(s) => setClock((p) => ({ ...p, speed: s }))}
           onToggleVectors={() => setClock((p) => ({ ...p, showVectors: !p.showVectors }))}
           onToggleTrajectories={() => setClock((p) => ({ ...p, showTrajectories: !p.showTrajectories }))}

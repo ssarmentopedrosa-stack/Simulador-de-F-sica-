@@ -5,10 +5,13 @@ import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity, GravityPrese
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, HelpCircle, Globe2 } from 'lucide-react';
+import { Sliders, HelpCircle, Globe2, Activity } from 'lucide-react';
+import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
 interface Pendulum3DProps {
   onOpenExperiment?: () => void;
+  initialParams?: Record<string, any>;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
 const GRAVITY_PRESETS: GravityPreset[] = [
@@ -18,15 +21,52 @@ const GRAVITY_PRESETS: GravityPreset[] = [
   { name: 'Júpiter', g: 24.79, description: '2.53g (24.79 m/s²)' },
 ];
 
-export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
+export const Pendulum3D: React.FC<Pendulum3DProps> = ({
+  onOpenExperiment,
+  initialParams,
+  onParamsChange,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // Parameters
-  const [length, setLength] = useState<number>(2.0);
-  const [mass, setMass] = useState<number>(1.0);
-  const [theta0Deg, setTheta0Deg] = useState<number>(30);
-  const [gravity, setGravity] = useState<number>(9.8);
-  const [damping, setDamping] = useState<number>(0.0);
+  const [length, setLength] = useState<number>(
+    () => (initialParams?.length != null ? Number(initialParams.length) : 2.0)
+  );
+  const [mass, setMass] = useState<number>(
+    () => (initialParams?.mass != null ? Number(initialParams.mass) : 1.0)
+  );
+  const [theta0Deg, setTheta0Deg] = useState<number>(
+    () => (initialParams?.theta0Deg != null ? Number(initialParams.theta0Deg) : 30)
+  );
+  const [gravity, setGravity] = useState<number>(
+    () => (initialParams?.gravity != null ? Number(initialParams.gravity) : 9.8)
+  );
+  const [damping, setDamping] = useState<number>(
+    () => (initialParams?.damping != null ? Number(initialParams.damping) : 0.0)
+  );
+  const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
+
+  const applyPreset = useCallback((p: Record<string, any>) => {
+    if (p.length !== undefined) setLength(Number(p.length));
+    if (p.mass !== undefined) setMass(Number(p.mass));
+    if (p.theta0Deg !== undefined) setTheta0Deg(Number(p.theta0Deg));
+    if (p.gravity !== undefined) setGravity(Number(p.gravity));
+    if (p.damping !== undefined) setDamping(Number(p.damping));
+  }, []);
+
+  useEffect(() => {
+    onParamsChange?.({ length, mass, theta0Deg, gravity, damping });
+  }, [length, mass, theta0Deg, gravity, damping, onParamsChange]);
+
+  useEffect(() => {
+    if (initialParams) {
+      if (initialParams.length !== undefined) setLength(Number(initialParams.length));
+      if (initialParams.mass !== undefined) setMass(Number(initialParams.mass));
+      if (initialParams.theta0Deg !== undefined) setTheta0Deg(Number(initialParams.theta0Deg));
+      if (initialParams.gravity !== undefined) setGravity(Number(initialParams.gravity));
+      if (initialParams.damping !== undefined) setDamping(Number(initialParams.damping));
+    }
+  }, [initialParams]);
 
   // Clock
   const [clock, setClock] = useState<SimulationClock>({
@@ -117,7 +157,7 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
@@ -437,133 +477,180 @@ export const Pendulum3D: React.FC<Pendulum3DProps> = ({ onOpenExperiment }) => {
           </div>
         </div>
 
-        {/* Parameters Panel */}
-        <div className="w-full md:w-80 bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[360px] md:max-h-none shrink-0">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros do Pêndulo</span>
-            </div>
+        {/* Side Panel: Tabs for Controls and Graphs */}
+        <div className="w-full md:w-96 lg:w-[420px] bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col h-full overflow-hidden shrink-0">
+          <div className="flex items-center p-2.5 border-b border-slate-800 bg-slate-950/60 gap-1.5 shrink-0">
+            <button
+              onClick={() => setActiveSideTab('controls')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'controls'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Parâmetros</span>
+            </button>
+            <button
+              onClick={() => setActiveSideTab('graphs')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'graphs'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Gráficos em Tempo Real</span>
+            </button>
           </div>
 
-          {/* Length Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Comprimento do Fio (L):</span>
-              <span className="font-mono text-cyan-400 font-medium">{length.toFixed(2)} m</span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="4.0"
-              step="0.1"
-              value={length}
-              onChange={(e) => setLength(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
+          {/* Tab 1: Parameters */}
+          {activeSideTab === 'controls' && (
+            <div className="p-3.5 flex flex-col gap-3.5 overflow-y-auto flex-1">
+              {/* Classic Didactic Presets Bar */}
+              <ClassicPresetsBar
+                moduleId="pendulum"
+                onApplyPreset={applyPreset}
+                currentParams={{ length, mass, theta0Deg, gravity, damping }}
+              />
 
-          {/* Mass Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Massa do Corpo (m):</span>
-              <span className="font-mono text-cyan-400 font-medium">{mass.toFixed(2)} kg</span>
-            </div>
-            <input
-              type="range"
-              min="0.2"
-              max="5.0"
-              step="0.1"
-              value={mass}
-              onChange={(e) => setMass(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-            <span className="text-[10px] text-slate-500">Nota: no modelo ideal, m não afeta o período T.</span>
-          </div>
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Parâmetros do Pêndulo</span>
+                <span className="text-[10px] text-cyan-400 font-mono">3D Gravitacional</span>
+              </div>
 
-          {/* Initial Angle Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Ângulo Inicial (θ₀):</span>
-              <span className="font-mono text-cyan-400 font-medium">{theta0Deg}°</span>
-            </div>
-            <input
-              type="range"
-              min="5"
-              max="80"
-              step="1"
-              value={theta0Deg}
-              onChange={(e) => setTheta0Deg(parseInt(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
+              {/* Length Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Comprimento do Fio (L):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{length.toFixed(2)} m</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="4.0"
+                  step="0.1"
+                  value={length}
+                  onChange={(e) => setLength(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
 
-          {/* Planetary Gravity Presets */}
-          <div className="flex flex-col gap-1.5 pt-1">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span className="flex items-center gap-1">
-                <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
-                Campo Gravitacional (g):
-              </span>
-              <span className="font-mono text-cyan-400">{gravity.toFixed(2)} m/s²</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {GRAVITY_PRESETS.map((gp) => (
-                <button
-                  key={gp.name}
-                  onClick={() => setGravity(gp.g)}
-                  className={`px-2 py-1.5 rounded text-xs transition-colors border text-left ${
-                    Math.abs(gravity - gp.g) < 0.05
-                      ? 'bg-cyan-950/70 border-cyan-500/70 text-cyan-300'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="font-semibold">{gp.name}</div>
-                  <div className="text-[10px] text-slate-500">{gp.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+              {/* Mass Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Massa do Corpo (m):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{mass.toFixed(2)} kg</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="5.0"
+                  step="0.1"
+                  value={mass}
+                  onChange={(e) => setMass(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+                <span className="text-[10px] text-slate-500">Nota: no modelo ideal, m não afeta o período T.</span>
+              </div>
 
-          {/* Damping */}
-          <div className="flex flex-col gap-1 pt-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Amortecimento do Ar:</span>
-              <span className="font-mono text-amber-400">{damping.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="0.4"
-              step="0.02"
-              value={damping}
-              onChange={(e) => setDamping(parseFloat(e.target.value))}
-              className="w-full accent-amber-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
+              {/* Initial Angle Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Ângulo Inicial (θ₀):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{theta0Deg}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="80"
+                  step="1"
+                  value={theta0Deg}
+                  onChange={(e) => setTheta0Deg(parseInt(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
 
-          {clock.showFormulas && (
-            <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações Governantes</span>
-              <KaTeXMath math="\ddot{\theta} + \frac{g}{L}\sin\theta = 0" block />
-              <KaTeXMath math="T_{\text{aprox}} = 2\pi\sqrt{\frac{L}{g}}" block />
-              <KaTeXMath math="E_p = mgL(1 - \cos\theta)" block />
+              {/* Planetary Gravity Presets */}
+              <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
+                    Campo Gravitacional (g):
+                  </span>
+                  <span className="font-mono text-cyan-400">{gravity.toFixed(2)} m/s²</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {GRAVITY_PRESETS.map((gp) => (
+                    <button
+                      key={gp.name}
+                      onClick={() => setGravity(gp.g)}
+                      className={`px-2 py-1.5 rounded text-xs transition-colors border text-left cursor-pointer ${
+                        Math.abs(gravity - gp.g) < 0.05
+                          ? 'bg-cyan-950/70 border-cyan-500/70 text-cyan-300'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold">{gp.name}</div>
+                      <div className="text-[10px] text-slate-500">{gp.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Damping */}
+              <div className="flex flex-col gap-1 pt-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Amortecimento do Ar:</span>
+                  <span className="font-mono text-amber-400">{damping.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.4"
+                  step="0.02"
+                  value={damping}
+                  onChange={(e) => setDamping(parseFloat(e.target.value))}
+                  className="w-full accent-amber-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {clock.showFormulas && (
+                <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações Governantes</span>
+                  <KaTeXMath math="\ddot{\theta} + \frac{g}{L}\sin\theta = 0" block />
+                  <KaTeXMath math="T_{\text{aprox}} = 2\pi\sqrt{\frac{L}{g}}" block />
+                  <KaTeXMath math="E_p = mgL(1 - \cos\theta)" block />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Graphs */}
+          {activeSideTab === 'graphs' && (
+            <div className="p-3.5 flex flex-col gap-3 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">Ângulo θ(t) & Energias</span>
+                <span className="text-[10px] font-mono text-cyan-400">Tempo Real</span>
+              </div>
+
+              <ScientificChart
+                data={dataBuffer}
+                series={chartSeries}
+                currentTime={clock.time}
+                height={260}
+                title="Evolução Angular e Energias do Pêndulo Simples"
+              />
+
+              <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-800/80 flex flex-col gap-1">
+                <span className="font-semibold text-slate-300">Análise do Movimento:</span>
+                <span>• Para pequenos ângulos (θ &lt; 15°), sen θ ≈ θ e o movimento é um MHS quase perfeito.</span>
+                <span>• Para grandes amplitudes (ex: 60°), ocorrem efeitos anarmônicos e o período real é maior que o aproximado.</span>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {clock.showGraphs && (
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950">
-          <ScientificChart
-            data={dataBuffer}
-            series={chartSeries}
-            currentTime={clock.time}
-            height={140}
-            title="Evolução Angular e Energias do Pêndulo Simples"
-          />
-        </div>
-      )}
 
       <div className="p-3 bg-slate-950 border-t border-slate-800/80">
         <PlaybackBar

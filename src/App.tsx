@@ -11,39 +11,48 @@ import { Interference3D } from './components/simulations/Interference3D';
 import { StandingWaves3D } from './components/simulations/StandingWaves3D';
 import { DopplerAcoustics3D } from './components/simulations/DopplerAcoustics3D';
 import { WavePhenomena3D } from './components/simulations/WavePhenomena3D';
+import { WorkPower3D } from './components/simulations/WorkPower3D';
+import { EnergyConservation3D } from './components/simulations/EnergyConservation3D';
+import { ImpulseMomentum3D } from './components/simulations/ImpulseMomentum3D';
+import { Collisions3D } from './components/simulations/Collisions3D';
+import { DensityPressure3D } from './components/simulations/DensityPressure3D';
+import { StevinTheorem3D } from './components/simulations/StevinTheorem3D';
+import { PascalPrinciple3D } from './components/simulations/PascalPrinciple3D';
+import { BuoyancyArchimedes3D } from './components/simulations/BuoyancyArchimedes3D';
+import { IdealGas3D } from './components/simulations/IdealGas3D';
+import { FirstLawThermodynamics3D } from './components/simulations/FirstLawThermodynamics3D';
+import { CarnotHeatEngines3D } from './components/simulations/CarnotHeatEngines3D';
+import { Calorimetry3D } from './components/simulations/Calorimetry3D';
+import { CoulombLaw3D } from './components/simulations/CoulombLaw3D';
+import { ElectricFieldLines3D } from './components/simulations/ElectricFieldLines3D';
+import { ElectricPotential3D } from './components/simulations/ElectricPotential3D';
+import { ParallelPlateCapacitor3D } from './components/simulations/ParallelPlateCapacitor3D';
 import { ExperimentModal } from './components/modals/ExperimentModal';
 import { EnemBankModal } from './components/modals/EnemBankModal';
 import { TestRunnerModal } from './components/modals/TestRunnerModal';
 import { TeacherModeModal } from './components/modals/TeacherModeModal';
 
-function resolveInitialModule(): ModuleId | 'home' {
+
+import { parseLabUrlState, serializeLabUrlState } from './physics/urlState';
+
+function resolveInitialState(): { moduleId: ModuleId | 'home'; params: Record<string, any> } {
   try {
-    // 1. Check URL hash anchor (e.g., #doppler or #pendulum)
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.replace(/^#/, '').trim();
-      if (isValidModuleId(hash)) {
-        return hash;
+    if (typeof window !== 'undefined') {
+      const parsed = parseLabUrlState(window.location.href);
+      if (parsed.moduleId) {
+        return { moduleId: parsed.moduleId, params: parsed.params };
       }
     }
 
-    // 2. Check query parameter (?module=...)
-    if (typeof window !== 'undefined' && window.location.search) {
-      const params = new URLSearchParams(window.location.search);
-      const queryMod = params.get('module');
-      if (queryMod && isValidModuleId(queryMod)) {
-        return queryMod;
-      }
-    }
-
-    // 3. Check persistent localStorage with strict validation
+    // Check persistent localStorage with strict validation
     const saved = localStorage.getItem('ondas_lab_last_module');
     if (saved && isValidModuleId(saved)) {
-      return saved;
+      return { moduleId: saved, params: {} };
     }
   } catch {
     // Safely ignore storage/security exceptions
   }
-  return 'home';
+  return { moduleId: 'home', params: {} };
 }
 
 function resolveInitialLastActive(): ModuleId {
@@ -59,52 +68,87 @@ function resolveInitialLastActive(): ModuleId {
 }
 
 export default function App() {
-  const [currentModuleId, setCurrentModuleId] = useState<ModuleId | 'home'>(resolveInitialModule);
-  const [lastActiveModule, setLastActiveModule] = useState<ModuleId>(resolveInitialLastActive);
+  const [initialLoadedState] = useState(resolveInitialState);
+  const [currentModuleId, setCurrentModuleId] = useState<ModuleId | 'home'>(initialLoadedState.moduleId);
+  const [currentParams, setCurrentParams] = useState<Record<string, any>>(initialLoadedState.params);
+  const [lastActiveModule, setLastActiveModule] = useState<ModuleId>(() => {
+    if (initialLoadedState.moduleId !== 'home') return initialLoadedState.moduleId;
+    return resolveInitialLastActive();
+  });
 
   const [activeExperiment, setActiveExperiment] = useState<GuidedExperiment | null>(null);
   const [isEnemBankOpen, setIsEnemBankOpen] = useState<boolean>(false);
   const [isTestRunnerOpen, setIsTestRunnerOpen] = useState<boolean>(false);
   const [isTeacherModeOpen, setIsTeacherModeOpen] = useState<boolean>(false);
 
+  // Synchronized parameter changes with URL hash
+  const handleParamsChange = useCallback(
+    (params: Record<string, any>) => {
+      setCurrentParams(params);
+      if (currentModuleId !== 'home') {
+        const hashStr = serializeLabUrlState(currentModuleId, params);
+        try {
+          if (typeof window !== 'undefined') {
+            const finalHash = hashStr.startsWith('#') ? hashStr : `#${hashStr}`;
+            window.history.replaceState(null, '', finalHash);
+          }
+        } catch {
+          // Ignored
+        }
+      }
+    },
+    [currentModuleId]
+  );
+
   // Synchronized module selection with localStorage and URL hash
-  const handleSelectModule = useCallback((modId: ModuleId | 'home') => {
-    if (modId === 'home') {
-      setCurrentModuleId('home');
-      try {
-        localStorage.removeItem('ondas_lab_last_module');
-        if (typeof window !== 'undefined' && window.location.hash) {
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  const handleSelectModule = useCallback(
+    (modId: ModuleId | 'home', initialPresetParams?: Record<string, any>) => {
+      if (modId === 'home') {
+        setCurrentModuleId('home');
+        setCurrentParams({});
+        try {
+          localStorage.removeItem('ondas_lab_last_module');
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }
+        } catch {
+          // Ignored
         }
-      } catch {
-        // Ignored
-      }
-    } else if (isValidModuleId(modId)) {
-      setCurrentModuleId(modId);
-      setLastActiveModule(modId);
-      try {
-        localStorage.setItem('ondas_lab_last_module', modId);
-        if (typeof window !== 'undefined') {
-          window.history.replaceState(null, '', `#${modId}`);
+      } else if (isValidModuleId(modId)) {
+        setCurrentModuleId(modId);
+        setLastActiveModule(modId);
+        const nextParams = initialPresetParams || {};
+        setCurrentParams(nextParams);
+        try {
+          localStorage.setItem('ondas_lab_last_module', modId);
+          if (typeof window !== 'undefined') {
+            const hashStr = serializeLabUrlState(modId, nextParams);
+            const finalHash = hashStr.startsWith('#') ? hashStr : `#${hashStr}`;
+            window.history.replaceState(null, '', finalHash);
+          }
+        } catch {
+          // Ignored
         }
-      } catch {
-        // Ignored
+      } else {
+        // Unrecognized or corrupted module ID: open home without throwing error
+        setCurrentModuleId('home');
+        setCurrentParams({});
       }
-    } else {
-      // Unrecognized or corrupted module ID: open home without throwing error
-      setCurrentModuleId('home');
-    }
-  }, []);
+    },
+    []
+  );
 
   // Browser back/forward navigation sync (hashchange)
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace(/^#/, '').trim();
-      if (isValidModuleId(hash)) {
-        setCurrentModuleId(hash);
-        setLastActiveModule(hash);
-      } else if (!hash) {
+      const parsed = parseLabUrlState(window.location.href);
+      if (parsed.moduleId) {
+        setCurrentModuleId(parsed.moduleId);
+        setLastActiveModule(parsed.moduleId);
+        setCurrentParams(parsed.params);
+      } else if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#home') {
         setCurrentModuleId('home');
+        setCurrentParams({});
       }
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -165,6 +209,7 @@ export default function App() {
       {/* Top Bar Header */}
       <Header
         currentModuleId={currentModuleId}
+        currentParams={currentParams}
         onSelectModule={handleSelectModule}
         onOpenTeacherMode={() => setIsTeacherModeOpen(true)}
         onOpenEnemBank={() => setIsEnemBankOpen(true)}
@@ -184,37 +229,198 @@ export default function App() {
         )}
 
         {currentModuleId === 'shm' && (
-          <SHM3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <SHM3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'spring_mass' && (
-          <SpringMass3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <SpringMass3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'pendulum' && (
-          <Pendulum3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <Pendulum3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'waves' && (
-          <WaveProgressive3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <WaveProgressive3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'interference' && (
-          <Interference3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <Interference3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'standing_waves' && (
-          <StandingWaves3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <StandingWaves3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'doppler' && (
-          <DopplerAcoustics3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <DopplerAcoustics3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
 
         {currentModuleId === 'phenomena' && (
-          <WavePhenomena3D onOpenExperiment={handleOpenExperimentForCurrent} />
+          <WavePhenomena3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'work_power' && (
+          <WorkPower3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'energy_conservation' && (
+          <EnergyConservation3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'impulse_momentum' && (
+          <ImpulseMomentum3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'collisions' && (
+          <Collisions3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'density_pressure' && (
+          <DensityPressure3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'stevin_theorem' && (
+          <StevinTheorem3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'pascal_principle' && (
+          <PascalPrinciple3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'buoyancy_archimedes' && (
+          <BuoyancyArchimedes3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'ideal_gas' && (
+          <IdealGas3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'first_law_thermodynamics' && (
+          <FirstLawThermodynamics3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'carnot_heat_engines' && (
+          <CarnotHeatEngines3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'calorimetry' && (
+          <Calorimetry3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'coulomb_law' && (
+          <CoulombLaw3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'electric_field_lines' && (
+          <ElectricFieldLines3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'electric_potential' && (
+          <ElectricPotential3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
+        )}
+
+        {currentModuleId === 'parallel_plate_capacitor' && (
+          <ParallelPlateCapacitor3D
+            onOpenExperiment={handleOpenExperimentForCurrent}
+            initialParams={currentParams}
+            onParamsChange={handleParamsChange}
+          />
         )}
       </main>
+
 
       {/* Guided Investigation Modal */}
       {activeExperiment && (

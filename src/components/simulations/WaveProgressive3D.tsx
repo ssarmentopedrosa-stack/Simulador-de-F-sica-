@@ -5,24 +5,60 @@ import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../..
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, HelpCircle, Layers, Ruler } from 'lucide-react';
+import { Sliders, HelpCircle, Layers, Ruler, Activity } from 'lucide-react';
+import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
 interface WaveProgressive3DProps {
   onOpenExperiment?: () => void;
+  initialParams?: Record<string, any>;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
 type WaveMode = 'transverse' | 'longitudinal' | 'surface3d';
 
-export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExperiment }) => {
+export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({
+  onOpenExperiment,
+  initialParams,
+  onParamsChange,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // Physical Parameters
-  const [waveMode, setWaveMode] = useState<WaveMode>('transverse');
-  const [amplitude, setAmplitude] = useState<number>(0.8);
-  const [frequency, setFrequency] = useState<number>(1.2);
-  const [wavelength, setWavelength] = useState<number>(2.4);
+  const [waveMode, setWaveMode] = useState<WaveMode>(
+    () => (initialParams?.waveMode as WaveMode) || 'transverse'
+  );
+  const [amplitude, setAmplitude] = useState<number>(
+    () => (initialParams?.amplitude != null ? Number(initialParams.amplitude) : 0.8)
+  );
+  const [frequency, setFrequency] = useState<number>(
+    () => (initialParams?.frequency != null ? Number(initialParams.frequency) : 1.2)
+  );
+  const [wavelength, setWavelength] = useState<number>(
+    () => (initialParams?.wavelength != null ? Number(initialParams.wavelength) : 2.4)
+  );
   const [showRuler, setShowRuler] = useState<boolean>(true);
   const [trackedPointX, setTrackedPointX] = useState<number>(2.0);
+  const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
+
+  const applyPreset = useCallback((p: Record<string, any>) => {
+    if (p.waveMode !== undefined) setWaveMode(p.waveMode);
+    if (p.amplitude !== undefined) setAmplitude(Number(p.amplitude));
+    if (p.frequency !== undefined) setFrequency(Number(p.frequency));
+    if (p.wavelength !== undefined) setWavelength(Number(p.wavelength));
+  }, []);
+
+  useEffect(() => {
+    onParamsChange?.({ waveMode, amplitude, frequency, wavelength });
+  }, [waveMode, amplitude, frequency, wavelength, onParamsChange]);
+
+  useEffect(() => {
+    if (initialParams) {
+      if (initialParams.waveMode !== undefined) setWaveMode(initialParams.waveMode);
+      if (initialParams.amplitude !== undefined) setAmplitude(Number(initialParams.amplitude));
+      if (initialParams.frequency !== undefined) setFrequency(Number(initialParams.frequency));
+      if (initialParams.wavelength !== undefined) setWavelength(Number(initialParams.wavelength));
+    }
+  }, [initialParams]);
 
   // Clock
   const [clock, setClock] = useState<SimulationClock>({
@@ -428,141 +464,188 @@ export const WaveProgressive3D: React.FC<WaveProgressive3DProps> = ({ onOpenExpe
           </div>
         </div>
 
-        {/* Control Panel */}
-        <div className="w-full md:w-80 bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[360px] md:max-h-none shrink-0">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Tipo & Parâmetros de Onda</span>
-            </div>
-          </div>
-
-          {/* Wave Mode Selector Tabs */}
-          <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-md border border-slate-800 text-xs">
+        {/* Side Panel: Tabs for Controls and Graphs */}
+        <div className="w-full md:w-96 lg:w-[420px] bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col h-full overflow-hidden shrink-0">
+          <div className="flex items-center p-2.5 border-b border-slate-800 bg-slate-950/60 gap-1.5 shrink-0">
             <button
-              onClick={() => setWaveMode('transverse')}
-              className={`py-1.5 rounded font-medium transition-colors ${
-                waveMode === 'transverse' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+              onClick={() => setActiveSideTab('controls')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'controls'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
             >
-              Transversal
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Parâmetros</span>
             </button>
             <button
-              onClick={() => setWaveMode('longitudinal')}
-              className={`py-1.5 rounded font-medium transition-colors ${
-                waveMode === 'longitudinal' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+              onClick={() => setActiveSideTab('graphs')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                activeSideTab === 'graphs'
+                  ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
             >
-              Longitudinal
-            </button>
-            <button
-              onClick={() => setWaveMode('surface3d')}
-              className={`py-1.5 rounded font-medium transition-colors ${
-                waveMode === 'surface3d' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Superfície
+              <Activity className="w-3.5 h-3.5" />
+              <span>Gráficos em Tempo Real</span>
             </button>
           </div>
 
-          {/* Amplitude Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Amplitude (A):</span>
-              <span className="font-mono text-cyan-400 font-medium">{amplitude.toFixed(2)} m</span>
-            </div>
-            <input
-              type="range"
-              min="0.2"
-              max="1.5"
-              step="0.05"
-              value={amplitude}
-              onChange={(e) => setAmplitude(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Frequency Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Frequência da Fonte (f):</span>
-              <span className="font-mono text-cyan-400 font-medium">{frequency.toFixed(2)} Hz</span>
-            </div>
-            <input
-              type="range"
-              min="0.2"
-              max="3.0"
-              step="0.1"
-              value={frequency}
-              onChange={(e) => setFrequency(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Wavelength Slider */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Comprimento de Onda (λ):</span>
-              <span className="font-mono text-cyan-400 font-medium">{wavelength.toFixed(2)} m</span>
-            </div>
-            <input
-              type="range"
-              min="0.8"
-              max="4.0"
-              step="0.1"
-              value={wavelength}
-              onChange={(e) => setWavelength(parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Point Inspector X */}
-          {waveMode === 'transverse' && (
-            <div className="flex flex-col gap-1 pt-1 border-t border-slate-800">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-amber-400 flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  Inspecionar Ponto P (x):
-                </span>
-                <span className="font-mono text-amber-400">{trackedPointX.toFixed(2)} m</span>
-              </div>
-              <input
-                type="range"
-                min="-4.0"
-                max="4.0"
-                step="0.2"
-                value={trackedPointX}
-                onChange={(e) => setTrackedPointX(parseFloat(e.target.value))}
-                className="w-full accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+          {/* Tab 1: Parameters */}
+          {activeSideTab === 'controls' && (
+            <div className="p-3.5 flex flex-col gap-3.5 overflow-y-auto flex-1">
+              {/* Classic Didactic Presets Bar */}
+              <ClassicPresetsBar
+                moduleId="waves"
+                onApplyPreset={applyPreset}
+                currentParams={{ waveMode, amplitude, frequency, wavelength }}
               />
-              <span className="text-[10px] text-slate-500">
-                Observe o gráfico abaixo: o ponto executa MHS puramente vertical!
-              </span>
+
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Tipo & Parâmetros de Onda</span>
+                <span className="text-[10px] text-cyan-400 font-mono">3D Propagação</span>
+              </div>
+
+              {/* Wave Mode Selector Tabs */}
+              <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-md border border-slate-800 text-xs">
+                <button
+                  onClick={() => setWaveMode('transverse')}
+                  className={`py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                    waveMode === 'transverse' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Transversal
+                </button>
+                <button
+                  onClick={() => setWaveMode('longitudinal')}
+                  className={`py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                    waveMode === 'longitudinal' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Longitudinal
+                </button>
+                <button
+                  onClick={() => setWaveMode('surface3d')}
+                  className={`py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                    waveMode === 'surface3d' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Superfície
+                </button>
+              </div>
+
+              {/* Amplitude Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Amplitude (A):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{amplitude.toFixed(2)} m</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="1.5"
+                  step="0.05"
+                  value={amplitude}
+                  onChange={(e) => setAmplitude(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Frequency Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Frequência da Fonte (f):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{frequency.toFixed(2)} Hz</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="3.0"
+                  step="0.1"
+                  value={frequency}
+                  onChange={(e) => setFrequency(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Wavelength Slider */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Comprimento de Onda (λ):</span>
+                  <span className="font-mono text-cyan-400 font-medium">{wavelength.toFixed(2)} m</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.8"
+                  max="4.0"
+                  step="0.1"
+                  value={wavelength}
+                  onChange={(e) => setWavelength(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* Point Inspector X */}
+              {waveMode === 'transverse' && (
+                <div className="flex flex-col gap-1 pt-1 border-t border-slate-800">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-amber-400 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      Inspecionar Ponto P (x):
+                    </span>
+                    <span className="font-mono text-amber-400">{trackedPointX.toFixed(2)} m</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-4.0"
+                    max="4.0"
+                    step="0.2"
+                    value={trackedPointX}
+                    onChange={(e) => setTrackedPointX(parseFloat(e.target.value))}
+                    className="w-full accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                  />
+                  <span className="text-[10px] text-slate-500">
+                    O ponto P executa MHS local puro em torno do equilíbrio, sem deslocamento de matéria!
+                  </span>
+                </div>
+              )}
+
+              {clock.showFormulas && (
+                <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações de Onda</span>
+                  <KaTeXMath math="y(x,t) = A\sin(kx - \omega t)" block />
+                  <KaTeXMath math="v = \lambda \cdot f" block />
+                  <KaTeXMath math="k = \frac{2\pi}{\lambda}, \quad \omega = 2\pi f" block />
+                </div>
+              )}
             </div>
           )}
 
-          {clock.showFormulas && (
-            <div className="mt-auto bg-slate-950/80 p-2.5 rounded border border-slate-800/80 text-[11px] text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Equações de Onda</span>
-              <KaTeXMath math="y(x,t) = A\sin(kx - \omega t)" block />
-              <KaTeXMath math="v = \lambda \cdot f" block />
-              <KaTeXMath math="k = \frac{2\pi}{\lambda}, \quad \omega = 2\pi f" block />
+          {/* Tab 2: Graphs */}
+          {activeSideTab === 'graphs' && (
+            <div className="p-3.5 flex flex-col gap-3 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200">Oscilação no Ponto P</span>
+                <span className="text-[10px] font-mono text-cyan-400">Tempo Real</span>
+              </div>
+
+              <ScientificChart
+                data={dataBuffer}
+                series={chartSeries}
+                currentTime={clock.time}
+                height={260}
+                title="Oscilação Harmônica Temporal do Ponto P Inspecionado y(t)"
+              />
+
+              <div className="text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-800/80 flex flex-col gap-1">
+                <span className="font-semibold text-slate-300">Conceito Central:</span>
+                <span>• Ondas mecânicas transportam energia e quantidade de movimento sem transportar matéria.</span>
+                <span>• Cada elemento do meio oscila localmente em MHS com período T = 1/f.</span>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {clock.showGraphs && (
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950">
-          <ScientificChart
-            data={dataBuffer}
-            series={chartSeries}
-            currentTime={clock.time}
-            height={140}
-            title="Oscilação Harmônica Temporal do Ponto P Inspecionado y(t)"
-          />
-        </div>
-      )}
 
       <div className="p-3 bg-slate-950 border-t border-slate-800/80">
         <PlaybackBar

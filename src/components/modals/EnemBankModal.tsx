@@ -95,12 +95,38 @@ export const EnemBankModal: React.FC<EnemBankModalProps> = ({ onClose, onOpenSim
               }}
               className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 focus:outline-none focus:border-cyan-500"
             >
-              <option value="all">Todos os Temas</option>
-              <option value="interference">Interferência & Fones</option>
-              <option value="doppler">Acústica & Efeito Doppler</option>
-              <option value="standing_waves">Harmônicos & Cordas</option>
-              <option value="phenomena">Refração & Difração</option>
-              <option value="pendulum">Pêndulo & Oscilações</option>
+              <option value="all">Todos os Temas ({ENEM_QUESTIONS.length} questões)</option>
+              <optgroup label="Mecânica Clássica">
+                <option value="work_power">Trabalho & Potência Útil</option>
+                <option value="energy_conservation">Conservação de Energia & Looping</option>
+                <option value="impulse_momentum">Impulso, Momento & Airbag</option>
+                <option value="collisions">Colisões 1D & 2D</option>
+              </optgroup>
+              <optgroup label="Hidrostática">
+                <option value="density_pressure">Densidade & Pressão</option>
+                <option value="stevin_theorem">Teorema de Stevin</option>
+                <option value="pascal_principle">Prensa Hidráulica de Pascal</option>
+                <option value="buoyancy_archimedes">Empuxo & Princípio de Arquimedes</option>
+              </optgroup>
+              <optgroup label="Termodinâmica">
+                <option value="ideal_gas">Gases Ideais & Calibração de Pneus</option>
+                <option value="first_law_thermodynamics">1ª Lei & Aerossóis</option>
+                <option value="carnot_heat_engines">Ciclo de Carnot & Usinas Térmicas</option>
+                <option value="calorimetry">Calorimetria & Fusão do Gelo</option>
+              </optgroup>
+              <optgroup label="Eletricidade (Eletrostática)">
+                <option value="coulomb_law">Lei de Coulomb & Dielétricos</option>
+                <option value="electric_field_lines">Campo Elétrico & Linhas 3D</option>
+                <option value="electric_potential">Potencial & Equipotenciais</option>
+                <option value="parallel_plate_capacitor">Capacitores & Desfibrilador</option>
+              </optgroup>
+              <optgroup label="Oscilações e Ondas">
+                <option value="interference">Interferência & Fones ANC</option>
+                <option value="doppler">Acústica & Efeito Doppler</option>
+                <option value="standing_waves">Harmônicos & Cordas</option>
+                <option value="phenomena">Refração & Difração Wi-Fi</option>
+                <option value="pendulum">Pêndulo & Oscilações</option>
+              </optgroup>
             </select>
 
             <select

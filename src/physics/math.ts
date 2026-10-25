@@ -721,3 +721,1352 @@ export function singleSlitDiffractionIntensity(
   const sinBeta = Math.sin(beta);
   return Math.pow(sinBeta / beta, 2);
 }
+
+// -------------------------------------------------------------
+// 9. MECÂNICA CLÁSSICA: TRABALHO E POTÊNCIA
+// -------------------------------------------------------------
+export interface WorkPowerState {
+  force: number;          // F (N)
+  distance: number;       // d (m)
+  angleDeg: number;       // theta (graus)
+  angleRad: number;       // theta (rad)
+  forceParallel: number;  // F * cos(theta) (N)
+  forcePerpendicular: number; // F * sin(theta) (N)
+  normalForce: number;    // N (N)
+  frictionForce: number;  // f_at = mu * N (N)
+  workApplied: number;    // W_F = F * d * cos(theta) (J)
+  workFriction: number;   // W_fat = -f_at * d (J)
+  workNet: number;        // W_res = W_F + W_fat (J)
+  acceleration: number;   // a_res = (F*cos(theta) - f_at)/m (m/s^2)
+  finalVelocity: number;  // v_f (m/s)
+  timeToComplete: number; // t (s)
+  averagePower: number;   // P_m = W_F / t (W)
+  instantaneousPowerFinal: number; // P_inst = F * cos(theta) * v_f (W)
+}
+
+export function calculateWorkAndPower(
+  force: number,
+  distance: number,
+  angleDeg: number,
+  mass: number,
+  frictionCoeff: number,
+  initialVelocity: number = 0,
+  gravity: number = 9.8
+): WorkPowerState {
+  const m = Math.max(0.1, mass);
+  const d = Math.max(0.01, distance);
+  const F = Math.max(0, force);
+  const mu = Math.max(0, frictionCoeff);
+  const g = Math.max(0.1, gravity);
+
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const forceParallel = F * Math.cos(angleRad);
+  const forcePerpendicular = F * Math.sin(angleRad);
+
+  // Normal contact force: N = max(0, m*g - F*sin(theta))
+  const normalForce = Math.max(0, m * g - forcePerpendicular);
+  const maxStaticFriction = mu * normalForce;
+
+  let acceleration = 0;
+  let frictionForce = 0;
+
+  if (forceParallel > maxStaticFriction || initialVelocity > 0) {
+    frictionForce = maxStaticFriction;
+    acceleration = Math.max(0, (forceParallel - frictionForce) / m);
+  } else {
+    // Static equilibrium
+    frictionForce = Math.max(0, forceParallel);
+    acceleration = 0;
+  }
+
+  const workApplied = forceParallel * d;
+  const workFriction = -frictionForce * d;
+  const workNet = workApplied + workFriction;
+
+  // Work-Energy Theorem: W_net = Delta Ec = 0.5 * m * (vf^2 - v0^2)
+  const finalKineticEnergy = Math.max(0, 0.5 * m * initialVelocity * initialVelocity + workNet);
+  const finalVelocity = Math.sqrt((2 * finalKineticEnergy) / m);
+
+  // Kinematic time: d = v_avg * t
+  const vAvg = (initialVelocity + finalVelocity) / 2;
+  const timeToComplete = vAvg > 1e-4 ? d / vAvg : acceleration > 1e-4 ? Math.sqrt((2 * d) / acceleration) : 0;
+
+  const averagePower = timeToComplete > 1e-4 ? workApplied / timeToComplete : 0;
+  const instantaneousPowerFinal = forceParallel * finalVelocity;
+
+  return {
+    force: F,
+    distance: d,
+    angleDeg,
+    angleRad,
+    forceParallel,
+    forcePerpendicular,
+    normalForce,
+    frictionForce,
+    workApplied,
+    workFriction,
+    workNet,
+    acceleration,
+    finalVelocity,
+    timeToComplete,
+    averagePower,
+    instantaneousPowerFinal,
+  };
+}
+
+// -------------------------------------------------------------
+// 10. MECÂNICA CLÁSSICA: CONSERVAÇÃO DA ENERGIA (RAMPA & LOOP 3D)
+// -------------------------------------------------------------
+export interface TrackPoint {
+  x: number;
+  y: number;
+  z: number;
+  tangentX: number;
+  tangentY: number;
+  curvatureRadius: number;
+  arcLength: number;
+}
+
+export interface RollerCoasterState {
+  x: number;
+  y: number;
+  z: number;
+  progress: number;       // 0 to 1 along track
+  arcLength: number;      // s (m)
+  velocity: number;       // v (m/s)
+  kineticEnergy: number;  // E_c = 0.5 * m * v^2 (J)
+  potentialEnergy: number;// E_p = m * g * y (J)
+  dissipatedEnergy: number;// E_diss = int mu * N ds (J)
+  mechanicalEnergy: number;// E_m = E_c + E_p (J)
+  totalInitialEnergy: number; // E_0 = m * g * h0 (J)
+  normalForce: number;    // N (N)
+  apparentWeightRatio: number; // N / (m*g)
+  inLoop: boolean;
+  loopSafe: boolean;      // N >= 0 at the loop apex
+}
+
+/**
+ * Analytical Roller Coaster Track Geometry:
+ * Track with initial hill (height h0), valley, circular loop of radius R, and exit runout.
+ */
+export function getTrackGeometry(trackLength: number = 24, loopRadius: number = 2.5, initialHeight: number = 8.0): TrackPoint[] {
+  const points: TrackPoint[] = [];
+  const steps = 300;
+  let accumulatedArcLength = 0;
+  let prevPos = { x: -trackLength / 2, y: initialHeight, z: 0 };
+
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps; // 0 to 1
+    const x = -trackLength / 2 + u * trackLength;
+    let y = 0;
+    let curvatureRadius = 10;
+
+    // Track profile segments
+    if (u < 0.35) {
+      // Starting hill: smooth cosine descent from h0 to 0.4
+      const p = u / 0.35;
+      y = 0.4 + (initialHeight - 0.4) * 0.5 * (1 + Math.cos(Math.PI * p));
+      curvatureRadius = 6.0;
+    } else if (u >= 0.35 && u <= 0.70) {
+      // Loop region centered at x = 0
+      const loopU = (u - 0.35) / 0.35;
+      const phi = loopU * 2 * Math.PI - Math.PI / 2;
+      y = loopRadius * (1 + Math.sin(phi));
+      curvatureRadius = loopRadius;
+    } else {
+      // Second hill and gentle terminal runout
+      const p = (u - 0.70) / 0.30;
+      y = 0.4 + 1.8 * Math.sin(Math.PI * p) * (1 - p);
+      curvatureRadius = 8.0;
+    }
+
+    const currentPos = { x, y: Math.max(0.1, y), z: 0 };
+    if (i > 0) {
+      const dx = currentPos.x - prevPos.x;
+      const dy = currentPos.y - prevPos.y;
+      accumulatedArcLength += Math.hypot(dx, dy);
+    }
+    prevPos = currentPos;
+
+    points.push({
+      x: currentPos.x,
+      y: currentPos.y,
+      z: 0,
+      tangentX: 1,
+      tangentY: 0,
+      curvatureRadius,
+      arcLength: accumulatedArcLength,
+    });
+  }
+  return points;
+}
+
+export function calculateRollerCoasterState(
+  progress: number, // 0 to 1
+  initialHeight: number,
+  mass: number,
+  frictionCoeff: number,
+  gravity: number = 9.8,
+  loopRadius: number = 2.5
+): RollerCoasterState {
+  const m = Math.max(0.1, mass);
+  const g = Math.max(0.1, gravity);
+  const h0 = Math.max(loopRadius * 2, initialHeight);
+  const mu = Math.max(0, frictionCoeff);
+
+  const clampedProgress = Math.max(0, Math.min(1, progress));
+  const track = getTrackGeometry(24, loopRadius, h0);
+  const idx = Math.min(track.length - 1, Math.floor(clampedProgress * (track.length - 1)));
+  const pt = track[idx];
+
+  const totalInitialEnergy = m * g * h0;
+  // Dissipation along arc length s
+  const dissipatedEnergy = Math.min(totalInitialEnergy * 0.85, mu * m * g * pt.arcLength);
+  const mechanicalEnergy = Math.max(0, totalInitialEnergy - dissipatedEnergy);
+  const potentialEnergy = m * g * pt.y;
+
+  const kineticEnergy = Math.max(0, mechanicalEnergy - potentialEnergy);
+  const velocity = Math.sqrt((2 * kineticEnergy) / m);
+
+  // Normal Force: N = m*(v^2 / R + g * cos(theta))
+  const inLoop = clampedProgress >= 0.35 && clampedProgress <= 0.70;
+  let normalForce = m * g;
+  let loopSafe = true;
+
+  if (inLoop) {
+    const loopU = (clampedProgress - 0.35) / 0.35;
+    const phi = loopU * 2 * Math.PI - Math.PI / 2;
+    // Radial equation: N + m*g*sin(phi) = m * v^2 / R
+    const centripetalForce = (m * velocity * velocity) / Math.max(0.5, pt.curvatureRadius);
+    normalForce = centripetalForce - m * g * Math.sin(phi);
+
+    // Apex safety: at phi = pi/2 (top, y = 2R), N >= 0 requires v^2 >= g*R
+    const vAtTopReq = Math.sqrt(g * loopRadius);
+    const mechAtTop = totalInitialEnergy - (mu * m * g * (pt.arcLength * 0.5));
+    const ecAtTop = mechAtTop - m * g * (2 * loopRadius);
+    loopSafe = ecAtTop >= 0.5 * m * vAtTopReq * vAtTopReq;
+  } else {
+    normalForce = m * g + (m * velocity * velocity) / Math.max(1, pt.curvatureRadius);
+  }
+
+  const apparentWeightRatio = Math.max(0, normalForce / (m * g));
+
+  return {
+    x: pt.x,
+    y: pt.y,
+    z: 0,
+    progress: clampedProgress,
+    arcLength: pt.arcLength,
+    velocity,
+    kineticEnergy,
+    potentialEnergy,
+    dissipatedEnergy,
+    mechanicalEnergy,
+    totalInitialEnergy,
+    normalForce: Math.max(0, normalForce),
+    apparentWeightRatio,
+    inLoop,
+    loopSafe,
+  };
+}
+
+// -------------------------------------------------------------
+// 11. MECÂNICA CLÁSSICA: IMPULSO E QUANTIDADE DE MOVIMENTO
+// -------------------------------------------------------------
+export interface ImpulseState {
+  mass: number;           // m (kg)
+  initialVelocity: number;// v0 (m/s)
+  finalVelocity: number;  // vf (m/s)
+  deltaP: number;         // Delta p = m*(vf - v0) (kg*m/s or N*s)
+  impulse: number;        // I = Delta p (N*s)
+  duration: number;       // Delta t (s)
+  averageForce: number;   // F_méd = |Delta p| / Delta t (N)
+  peakForce: number;      // F_pico = (pi/2) * F_méd (pulso senoidal) (N)
+  peakGForce: number;     // a_pico / g (g)
+  cushioningDevice: 'airbag' | 'helmet' | 'rigid_wall';
+  deviceLabel: string;
+  forceAtTime: (t: number) => number;
+}
+
+export function calculateImpulseCollision(
+  mass: number,
+  initialVelocity: number,
+  cushioningDevice: 'airbag' | 'helmet' | 'rigid_wall',
+  gravity: number = 9.8
+): ImpulseState {
+  const m = Math.max(0.1, mass);
+  const v0 = initialVelocity;
+  const vf = 0; // Completely stopped after crash
+  const deltaP = m * (vf - v0);
+  const impulseMag = Math.abs(deltaP);
+
+  // Impact duration depends on cushioning technology
+  // Airbag: 0.12s ~ 0.18s (gradual deceleration)
+  // Helmet: 0.05s ~ 0.08s (expanded polystyrene foam compression)
+  // Rigid Wall: 0.008s ~ 0.015s (metal crumple / direct shock)
+  let duration = 0.15;
+  let deviceLabel = 'Airbag Automotivo';
+
+  if (cushioningDevice === 'airbag') {
+    duration = 0.14;
+    deviceLabel = 'Airbag Automotivo (Absorção Estendida)';
+  } else if (cushioningDevice === 'helmet') {
+    duration = 0.06;
+    deviceLabel = 'Capacete de Proteção (EPS)';
+  } else {
+    duration = 0.012;
+    deviceLabel = 'Barreira Rígida Indeformável';
+  }
+
+  const averageForce = impulseMag / duration;
+  // Sinusoidal half-wave force pulse: F(t) = F_peak * sin(pi * t / dt)
+  // Integral from 0 to dt of F(t) dt = (2 / pi) * F_peak * dt = I
+  // => F_peak = (pi / 2) * (I / dt) = (pi / 2) * F_avg
+  const peakForce = (Math.PI / 2) * averageForce;
+  const peakGForce = (peakForce / m) / gravity;
+
+  const forceAtTime = (t: number): number => {
+    if (t < 0 || t > duration) return 0;
+    return peakForce * Math.sin((Math.PI * t) / duration);
+  };
+
+  return {
+    mass: m,
+    initialVelocity: v0,
+    finalVelocity: vf,
+    deltaP,
+    impulse: impulseMag,
+    duration,
+    averageForce,
+    peakForce,
+    peakGForce,
+    cushioningDevice,
+    deviceLabel,
+    forceAtTime,
+  };
+}
+
+// -------------------------------------------------------------
+// 12. MECÂNICA CLÁSSICA: COLISÕES 1D E 2D
+// -------------------------------------------------------------
+export interface Collision1DState {
+  m1: number;
+  m2: number;
+  v1i: number;
+  v2i: number;
+  v1f: number;
+  v2f: number;
+  restitution: number;    // e in [0, 1]
+  initialMomentum: number;// p_i = m1*v1i + m2*v2i (kg*m/s)
+  finalMomentum: number;  // p_f = m1*v1f + m2*v2f (kg*m/s)
+  initialKineticEnergy: number; // E_ci (J)
+  finalKineticEnergy: number;   // E_cf (J)
+  dissipatedEnergy: number;     // Delta E_c = E_ci - E_cf (J)
+  relativeApproachSpeed: number; // |v1i - v2i| (m/s)
+  relativeSeparationSpeed: number; // |v2f - v1f| (m/s)
+  collisionType: 'elastic' | 'partially_elastic' | 'inelastic';
+  typeLabel: string;
+}
+
+export function calculateCollision1D(
+  m1: number,
+  m2: number,
+  v1i: number,
+  v2i: number,
+  restitution: number
+): Collision1DState {
+  const mass1 = Math.max(0.1, m1);
+  const mass2 = Math.max(0.1, m2);
+  const e = Math.max(0, Math.min(1, restitution));
+
+  // Closed-form analytical solution for 1D collision with restitution e:
+  // v1f = [(m1 - e*m2)*v1i + (1 + e)*m2*v2i] / (m1 + m2)
+  // v2f = [(1 + e)*m1*v1i + (m2 - e*m1)*v2i] / (m1 + m2)
+  const totalMass = mass1 + mass2;
+  const v1f = ((mass1 - e * mass2) * v1i + (1 + e) * mass2 * v2i) / totalMass;
+  const v2f = ((1 + e) * mass1 * v1i + (mass2 - e * mass1) * v2i) / totalMass;
+
+  const initialMomentum = mass1 * v1i + mass2 * v2i;
+  const finalMomentum = mass1 * v1f + mass2 * v2f;
+
+  const initialKineticEnergy = 0.5 * mass1 * v1i * v1i + 0.5 * mass2 * v2i * v2i;
+  const finalKineticEnergy = 0.5 * mass1 * v1f * v1f + 0.5 * mass2 * v2f * v2f;
+  const dissipatedEnergy = Math.max(0, initialKineticEnergy - finalKineticEnergy);
+
+  const relativeApproachSpeed = Math.abs(v1i - v2i);
+  const relativeSeparationSpeed = Math.abs(v2f - v1f);
+
+  let collisionType: 'elastic' | 'partially_elastic' | 'inelastic' = 'partially_elastic';
+  let typeLabel = 'Parcialmente Elástica (0 < e < 1)';
+
+  if (Math.abs(e - 1.0) < 1e-4) {
+    collisionType = 'elastic';
+    typeLabel = 'Perfeitamente Elástica (e = 1,0 - Ec conservada)';
+  } else if (e < 1e-4) {
+    collisionType = 'inelastic';
+    typeLabel = 'Perfeitamente Inelástica (e = 0 - corpos unidos)';
+  }
+
+  return {
+    m1: mass1,
+    m2: mass2,
+    v1i,
+    v2i,
+    v1f,
+    v2f,
+    restitution: e,
+    initialMomentum,
+    finalMomentum,
+    initialKineticEnergy,
+    finalKineticEnergy,
+    dissipatedEnergy,
+    relativeApproachSpeed,
+    relativeSeparationSpeed,
+    collisionType,
+    typeLabel,
+  };
+}
+
+export interface Collision2DState {
+  m1: number;
+  m2: number;
+  v1i: Vector3D;
+  v2i: Vector3D;
+  v1f: Vector3D;
+  v2f: Vector3D;
+  restitution: number;
+  initialMomentum: Vector3D;
+  finalMomentum: Vector3D;
+  initialKineticEnergy: number;
+  finalKineticEnergy: number;
+  dissipatedEnergy: number;
+  impactAngleDeg: number;
+}
+
+export function calculateCollision2D(
+  m1: number,
+  m2: number,
+  v1i: Vector3D,
+  v2i: Vector3D,
+  impactAngleDeg: number,
+  restitution: number
+): Collision2DState {
+  const mass1 = Math.max(0.1, m1);
+  const mass2 = Math.max(0.1, m2);
+  const e = Math.max(0, Math.min(1, restitution));
+
+  // Normal direction unit vector at impact angle phi
+  const phi = (impactAngleDeg * Math.PI) / 180;
+  const nx = Math.cos(phi);
+  const nz = Math.sin(phi);
+
+  // Tangent direction unit vector (-nz, nx)
+  const tx = -nz;
+  const tz = nx;
+
+  // Project initial velocities onto normal (line of centers) and tangent
+  const v1n = v1i.x * nx + v1i.z * nz;
+  const v1t = v1i.x * tx + v1i.z * tz;
+
+  const v2n = v2i.x * nx + v2i.z * nz;
+  const v2t = v2i.x * tx + v2i.z * tz;
+
+  // 1D restitution collision along normal direction
+  const totalMass = mass1 + mass2;
+  const v1nf = ((mass1 - e * mass2) * v1n + (1 + e) * mass2 * v2n) / totalMass;
+  const v2nf = ((1 + e) * mass1 * v1n + (mass2 - e * mass1) * v2n) / totalMass;
+
+  // Tangential velocity is conserved (frictionless impact)
+  const v1tf = v1t;
+  const v2tf = v2t;
+
+  // Reconstruct Cartesian velocity vectors
+  const v1f: Vector3D = {
+    x: v1nf * nx + v1tf * tx,
+    y: 0,
+    z: v1nf * nz + v1tf * tz,
+  };
+
+  const v2f: Vector3D = {
+    x: v2nf * nx + v2tf * tx,
+    y: 0,
+    z: v2nf * nz + v2tf * tz,
+  };
+
+  const initialMomentum: Vector3D = {
+    x: mass1 * v1i.x + mass2 * v2i.x,
+    y: 0,
+    z: mass1 * v1i.z + mass2 * v2i.z,
+  };
+
+  const finalMomentum: Vector3D = {
+    x: mass1 * v1f.x + mass2 * v2f.x,
+    y: 0,
+    z: mass1 * v1f.z + mass2 * v2f.z,
+  };
+
+  const initialKineticEnergy =
+    0.5 * mass1 * (v1i.x * v1i.x + v1i.z * v1i.z) +
+    0.5 * mass2 * (v2i.x * v2i.x + v2i.z * v2i.z);
+
+  const finalKineticEnergy =
+    0.5 * mass1 * (v1f.x * v1f.x + v1f.z * v1f.z) +
+    0.5 * mass2 * (v2f.x * v2f.x + v2f.z * v2f.z);
+
+  const dissipatedEnergy = Math.max(0, initialKineticEnergy - finalKineticEnergy);
+
+  return {
+    m1: mass1,
+    m2: mass2,
+    v1i,
+    v2i,
+    v1f,
+    v2f,
+    restitution: e,
+    initialMomentum,
+    finalMomentum,
+    initialKineticEnergy,
+    finalKineticEnergy,
+    dissipatedEnergy,
+    impactAngleDeg,
+  };
+}
+
+// -------------------------------------------------------------
+// 7. HIDROSTÁTICA (DENSIDADE, PRESSÃO, STEVIN, PASCAL, ARQUIMEDES)
+// -------------------------------------------------------------
+
+// --- 7.1 DENSIDADE E PRESSÃO ---
+export interface DensityPressureState {
+  mass: number;             // kg
+  volume: number;           // m^3
+  density: number;          // kg/m^3
+  contactArea: number;      // m^2
+  contactForce: number;     // N (F = m * g)
+  mechanicalPressure: number; // Pa (P = F / A)
+  mechanicalPressureKPa: number; // kPa
+  fluidDensity: number;     // kg/m^3
+  fluidHeight: number;      // m
+  hydrostaticPressure: number; // Pa (P_h = rho_f * g * h)
+  totalPressure: number;    // Pa (P_atm + P_h)
+  relativeDensity: number;  // rho / rho_water
+}
+
+export function calculateDensityAndPressure(
+  massKg: number,
+  volumeM3: number,
+  contactAreaM2: number,
+  fluidDensityKgM3: number = 1000,
+  fluidHeightM: number = 1.0,
+  gravity: number = 9.8,
+  pAtmPa: number = 101325
+): DensityPressureState {
+  const m = Math.max(0.001, massKg);
+  const v = Math.max(0.00001, volumeM3);
+  const area = Math.max(0.0001, contactAreaM2);
+  const rhoSolid = m / v;
+  const fNormal = m * gravity;
+  const pMech = fNormal / area;
+  const pHydro = fluidDensityKgM3 * gravity * Math.max(0, fluidHeightM);
+  const pTotal = pAtmPa + pHydro;
+  const relDensity = rhoSolid / 1000.0;
+
+  return {
+    mass: m,
+    volume: v,
+    density: rhoSolid,
+    contactArea: area,
+    contactForce: fNormal,
+    mechanicalPressure: pMech,
+    mechanicalPressureKPa: pMech / 1000,
+    fluidDensity: fluidDensityKgM3,
+    fluidHeight: fluidHeightM,
+    hydrostaticPressure: pHydro,
+    totalPressure: pTotal,
+    relativeDensity: relDensity,
+  };
+}
+
+// --- 7.2 TEOREMA DE STEVIN E VASOS COMUNICANTES ---
+export interface StevinState {
+  depth: number;            // h (m)
+  fluidDensity: number;     // rho (kg/m^3)
+  gravity: number;          // g (m/s^2)
+  pAtm: number;             // P_atm (Pa)
+  deltaP: number;           // Delta P = rho * g * h (Pa)
+  pAbs: number;             // P_abs = P_atm + rho * g * h (Pa)
+  pAbsAtm: number;          // P_abs in atm
+  forceOnBase: number;      // F = P * A (N)
+}
+
+export function calculateStevinPressure(
+  depthM: number,
+  fluidDensityKgM3: number = 1000,
+  gravity: number = 9.8,
+  pAtmPa: number = 101325,
+  baseAreaM2: number = 0.05
+): StevinState {
+  const h = Math.max(0, depthM);
+  const rho = Math.max(1, fluidDensityKgM3);
+  const deltaP = rho * gravity * h;
+  const pAbs = pAtmPa + deltaP;
+  const pAbsAtm = pAbs / 101325;
+  const forceOnBase = pAbs * baseAreaM2;
+
+  return {
+    depth: h,
+    fluidDensity: rho,
+    gravity,
+    pAtm: pAtmPa,
+    deltaP,
+    pAbs,
+    pAbsAtm,
+    forceOnBase,
+  };
+}
+
+export interface UTubeState {
+  rho1: number;       // kg/m^3 (liquid 1, e.g. water)
+  h1: number;         // m (height of column 1 above interface)
+  rho2: number;       // kg/m^3 (liquid 2, e.g. oil)
+  h2: number;         // m (equilibrium height: h2 = h1 * rho1 / rho2)
+  interfacePressure: number; // Pa (P_atm + rho1 * g * h1)
+  isEquilibrium: boolean;
+}
+
+export function calculateUTubeEquilibrium(
+  rho1: number,
+  h1: number,
+  rho2: number,
+  pAtmPa: number = 101325,
+  gravity: number = 9.8
+): UTubeState {
+  const r1 = Math.max(1, rho1);
+  const r2 = Math.max(1, rho2);
+  const col1 = Math.max(0, h1);
+  // Equilibrium condition: rho1 * g * h1 = rho2 * g * h2 => h2 = h1 * (rho1 / rho2)
+  const col2 = col1 * (r1 / r2);
+  const pInterface = pAtmPa + r1 * gravity * col1;
+
+  return {
+    rho1: r1,
+    h1: col1,
+    rho2: r2,
+    h2: col2,
+    interfacePressure: pInterface,
+    isEquilibrium: true,
+  };
+}
+
+// --- 7.3 PRINCÍPIO DE PASCAL E PRENSA HIDRÁULICA ---
+export interface HydraulicPressState {
+  force1: number;           // F1 applied (N)
+  radius1: number;          // r1 (m)
+  radius2: number;          // r2 (m)
+  area1: number;            // A1 = pi * r1^2 (m^2)
+  area2: number;            // A2 = pi * r2^2 (m^2)
+  areaRatio: number;        // A2 / A1
+  force2: number;           // F2 = F1 * (A2 / A1) (N)
+  deltaP: number;           // Delta P = F1 / A1 = F2 / A2 (Pa)
+  displacement1: number;    // d1 (m)
+  displacement2: number;    // d2 = d1 * (A1 / A2) (m)
+  displacedVolume: number;  // Delta V = A1 * d1 = A2 * d2 (m^3)
+  work1: number;            // W1 = F1 * d1 (J)
+  work2: number;            // W2 = F2 * d2 (J)
+  isWorkConserved: boolean;
+  efficiency: number;       // eta
+}
+
+export function calculateHydraulicPress(
+  force1N: number,
+  radius1M: number,
+  radius2M: number,
+  displacement1M: number = 0.1,
+  efficiency: number = 1.0
+): HydraulicPressState {
+  const f1 = Math.max(0, force1N);
+  const r1 = Math.max(0.01, radius1M);
+  const r2 = Math.max(0.01, radius2M);
+  const d1 = Math.max(0, displacement1M);
+  const eta = Math.min(1.0, Math.max(0.1, efficiency));
+
+  const a1 = Math.PI * r1 * r1;
+  const a2 = Math.PI * r2 * r2;
+  const areaRatio = a2 / a1;
+
+  // Pascal: Delta P = F1 / A1
+  const deltaP = a1 > 0 ? f1 / a1 : 0;
+  // Multiplication of force: F2 = F1 * (A2 / A1) * eta
+  const f2 = f1 * areaRatio * eta;
+
+  // Conservation of incompressibility: A1 * d1 = A2 * d2 => d2 = d1 * (A1 / A2)
+  const d2 = d1 / areaRatio;
+  const displacedVolume = a1 * d1;
+
+  const w1 = f1 * d1;
+  const w2 = f2 * d2;
+  const isWorkConserved = Math.abs(w1 - (w2 / eta)) < 1e-9;
+
+  return {
+    force1: f1,
+    radius1: r1,
+    radius2: r2,
+    area1: a1,
+    area2: a2,
+    areaRatio,
+    force2: f2,
+    deltaP,
+    displacement1: d1,
+    displacement2: d2,
+    displacedVolume,
+    work1: w1,
+    work2: w2,
+    isWorkConserved,
+    efficiency: eta,
+  };
+}
+
+// --- 7.4 EMPUXO E PRINCÍPIO DE ARQUIMEDES ---
+export interface BuoyancyState {
+  bodyMass: number;         // kg
+  bodyVolume: number;       // m^3
+  bodyDensity: number;      // kg/m^3 (m / V)
+  fluidDensity: number;     // kg/m^3
+  gravity: number;          // m/s^2
+  trueWeight: number;       // P = m * g (N)
+  buoyantForce: number;     // E = rho_f * V_sub * g (N)
+  apparentWeight: number;   // P_ap = max(0, P - E) (N)
+  submergedVolume: number;  // V_sub (m^3)
+  submergedFraction: number;// V_sub / V_total (0 to 1)
+  displacedMass: number;    // m_f = rho_f * V_sub (kg)
+  displacedWeight: number;  // P_f = m_f * g (N)
+  regime: 'floats' | 'neutral' | 'sinks';
+  normalForceBottom: number;// N on floor if sunk (N)
+  netAcceleration: number;  // a = (P - E) / m (m/s^2)
+}
+
+export function calculateBuoyancyState(
+  bodyMassKg: number,
+  bodyVolumeM3: number,
+  fluidDensityKgM3: number = 1000,
+  gravity: number = 9.8,
+  immersionFractionManual?: number
+): BuoyancyState {
+  const m = Math.max(0.001, bodyMassKg);
+  const vTotal = Math.max(0.00001, bodyVolumeM3);
+  const rhoFluid = Math.max(1, fluidDensityKgM3);
+  const rhoBody = m / vTotal;
+  const trueWeight = m * gravity;
+
+  let submergedFraction: number;
+  let regime: 'floats' | 'neutral' | 'sinks';
+
+  if (immersionFractionManual !== undefined) {
+    submergedFraction = Math.max(0, Math.min(1, immersionFractionManual));
+    if (submergedFraction < 1 && rhoBody <= rhoFluid) {
+      regime = 'floats';
+    } else if (rhoBody > rhoFluid) {
+      regime = 'sinks';
+    } else {
+      regime = 'neutral';
+    }
+  } else {
+    // Free equilibrium state:
+    if (rhoBody < rhoFluid) {
+      regime = 'floats';
+      submergedFraction = rhoBody / rhoFluid; // Fraction submersed at equilibrium (E = P)
+    } else if (Math.abs(rhoBody - rhoFluid) < 1e-4) {
+      regime = 'neutral';
+      submergedFraction = 1.0;
+    } else {
+      regime = 'sinks';
+      submergedFraction = 1.0;
+    }
+  }
+
+  const submergedVolume = vTotal * submergedFraction;
+  const buoyantForce = rhoFluid * submergedVolume * gravity;
+  const displacedMass = rhoFluid * submergedVolume;
+  const displacedWeight = displacedMass * gravity;
+  const apparentWeight = Math.max(0, trueWeight - buoyantForce);
+
+  // If resting on bottom when sunk: Normal force = P - E
+  const normalForceBottom = regime === 'sinks' ? Math.max(0, trueWeight - buoyantForce) : 0;
+  // Dynamic free acceleration (in fluids ignoring drag)
+  const netAcceleration = (trueWeight - buoyantForce) / m;
+
+  return {
+    bodyMass: m,
+    bodyVolume: vTotal,
+    bodyDensity: rhoBody,
+    fluidDensity: rhoFluid,
+    gravity,
+    trueWeight,
+    buoyantForce,
+    apparentWeight,
+    submergedVolume,
+    submergedFraction,
+    displacedMass,
+    displacedWeight,
+    regime,
+    normalForceBottom,
+    netAcceleration,
+  };
+}
+
+// -------------------------------------------------------------
+// 8. TERMODINÂMICA (GASES IDEAIS, 1ª LEI, MÁQUINAS TÉRMICAS / CARNOT, CALORIMETRIA)
+// -------------------------------------------------------------
+
+export const GAS_CONSTANT_R = 8.314462618; // J / (mol * K)
+export const BOLTZMANN_K = 1.380649e-23;   // J / K
+export const AVOGADRO_N = 6.02214076e23;   // molecules / mol
+
+// --- 8.1 GASES IDEAIS E TRANSFORMAÇÕES ---
+export type GasTransformationType = 'isothermal' | 'isobaric' | 'isochoric' | 'adiabatic';
+
+export interface IdealGasState {
+  pressure: number;         // Pa
+  pressureAtm: number;      // atm
+  volume: number;           // m^3
+  volumeLiters: number;     // L
+  temperature: number;      // K
+  temperatureC: number;     // deg C
+  nMoles: number;           // mol
+  internalEnergy: number;   // U = (f/2) * n * R * T (J)
+  vRms: number;             // m/s (Root mean square molecular speed)
+  meanKineticEnergy: number;// J per molecule (<Ec> = 3/2 * k * T)
+  transformationType: GasTransformationType;
+  gamma: number;            // Cp / Cv (e.g. 5/3 = 1.667 for monoatomic, 7/5 = 1.4 for diatomic)
+}
+
+export function calculateIdealGasState(
+  pressurePa: number,
+  volumeM3: number,
+  nMoles: number = 1.0,
+  degreesOfFreedom: number = 3, // 3 for monoatomic (He, Ar), 5 for diatomic (N2, O2)
+  molarMassKgMol: number = 0.02897 // air ~ 29 g/mol
+): IdealGasState {
+  const p = Math.max(100, pressurePa);
+  const v = Math.max(0.0001, volumeM3);
+  const n = Math.max(0.01, nMoles);
+  const f = Math.max(3, degreesOfFreedom);
+
+  // PV = nRT => T = PV / (nR)
+  const t = (p * v) / (n * GAS_CONSTANT_R);
+  const u = (f / 2) * n * GAS_CONSTANT_R * t;
+  const gamma = (f + 2) / f;
+
+  // v_rms = sqrt(3 * R * T / M)
+  const vRms = Math.sqrt((3 * GAS_CONSTANT_R * t) / molarMassKgMol);
+  // <Ec> = 3/2 * k_B * T
+  const meanEc = 1.5 * BOLTZMANN_K * t;
+
+  return {
+    pressure: p,
+    pressureAtm: p / 101325,
+    volume: v,
+    volumeLiters: v * 1000,
+    temperature: t,
+    temperatureC: t - 273.15,
+    nMoles: n,
+    internalEnergy: u,
+    vRms,
+    meanKineticEnergy: meanEc,
+    transformationType: 'isothermal',
+    gamma,
+  };
+}
+
+export interface TransformationStepResult {
+  initialP: number;
+  initialV: number;
+  initialT: number;
+  finalP: number;
+  finalV: number;
+  finalT: number;
+  workW: number;            // J (positive when expanding)
+  heatQ: number;            // J (positive when heat absorbed)
+  deltaU: number;           // J (change in internal energy)
+}
+
+export function calculateGasTransformation(
+  type: GasTransformationType,
+  initialP: number,
+  initialV: number,
+  finalV: number,
+  nMoles: number = 1.0,
+  degreesOfFreedom: number = 3
+): TransformationStepResult {
+  const n = Math.max(0.01, nMoles);
+  const f = Math.max(3, degreesOfFreedom);
+  const cv = (f / 2) * GAS_CONSTANT_R;
+  const cp = cv + GAS_CONSTANT_R;
+  const gamma = cp / cv;
+
+  const p1 = Math.max(100, initialP);
+  const v1 = Math.max(0.0001, initialV);
+  const v2 = Math.max(0.0001, finalV);
+  const t1 = (p1 * v1) / (n * GAS_CONSTANT_R);
+
+  let p2 = p1;
+  let t2 = t1;
+  let workW = 0;
+  let heatQ = 0;
+  let deltaU = 0;
+
+  switch (type) {
+    case 'isothermal': {
+      // T2 = T1, P2 = P1 * (V1 / V2)
+      t2 = t1;
+      p2 = p1 * (v1 / v2);
+      workW = n * GAS_CONSTANT_R * t1 * Math.log(v2 / v1);
+      deltaU = 0;
+      heatQ = workW; // 1st Law: Q = W when deltaU = 0
+      break;
+    }
+    case 'isobaric': {
+      // P2 = P1, V2 / T2 = V1 / T1 => T2 = T1 * (V2 / V1)
+      p2 = p1;
+      t2 = t1 * (v2 / v1);
+      workW = p1 * (v2 - v1);
+      deltaU = n * cv * (t2 - t1);
+      heatQ = n * cp * (t2 - t1); // or Q = deltaU + workW
+      break;
+    }
+    case 'isochoric': {
+      // V2 = V1 (no expansion work)
+      // If finalV is different, this transformation holds V constant and changes T/P
+      p2 = p1 * (v2 / v1); // user adjusts P
+      t2 = (p2 * v1) / (n * GAS_CONSTANT_R);
+      workW = 0;
+      deltaU = n * cv * (t2 - t1);
+      heatQ = deltaU;
+      break;
+    }
+    case 'adiabatic': {
+      // Q = 0, P1 * V1^gamma = P2 * V2^gamma
+      heatQ = 0;
+      p2 = p1 * Math.pow(v1 / v2, gamma);
+      t2 = (p2 * v2) / (n * GAS_CONSTANT_R);
+      deltaU = n * cv * (t2 - t1);
+      workW = -deltaU; // W = (P1*V1 - P2*V2) / (gamma - 1)
+      break;
+    }
+  }
+
+  return {
+    initialP: p1,
+    initialV: v1,
+    initialT: t1,
+    finalP: p2,
+    finalV: v2,
+    finalT: t2,
+    workW,
+    heatQ,
+    deltaU,
+  };
+}
+
+// --- 8.2 PRIMEIRA LEI DA TERMODINÂMICA ---
+export interface FirstLawState {
+  heatQ: number;            // J
+  workW: number;            // J
+  deltaU: number;           // J (Delta U = Q - W)
+  initialInternalEnergy: number;
+  finalInternalEnergy: number;
+  isFirstLawSatisfied: boolean;
+  regime: 'expansion' | 'compression' | 'isometric' | 'adiabatic';
+}
+
+export function calculateFirstLaw(
+  heatQJoules: number,
+  workWJoules: number,
+  initialEnergyU1: number = 1000
+): FirstLawState {
+  const q = heatQJoules;
+  const w = workWJoules;
+  // 1st Law of Thermodynamics: Delta U = Q - W
+  const deltaU = q - w;
+  const u2 = initialEnergyU1 + deltaU;
+
+  let regime: 'expansion' | 'compression' | 'isometric' | 'adiabatic' = 'expansion';
+  if (Math.abs(w) < 1e-6) regime = 'isometric';
+  else if (Math.abs(q) < 1e-6) regime = 'adiabatic';
+  else if (w < 0) regime = 'compression';
+
+  return {
+    heatQ: q,
+    workW: w,
+    deltaU,
+    initialInternalEnergy: initialEnergyU1,
+    finalInternalEnergy: u2,
+    isFirstLawSatisfied: Math.abs(deltaU - (q - w)) < 1e-12,
+    regime,
+  };
+}
+
+// --- 8.3 MÁQUINAS TÉRMICAS E CICLO DE CARNOT (2ª LEI) ---
+export interface CarnotCycleState {
+  tempHot: number;          // T_H (K)
+  tempCold: number;         // T_C (K)
+  carnotEfficiency: number; // eta_C = 1 - T_C / T_H
+  carnotEfficiencyPercent: number;
+  nMoles: number;
+  v1: number;               // start of isothermal expansion
+  v2: number;               // end of isothermal expansion (start of adiabatic expansion)
+  v3: number;               // end of adiabatic expansion (start of isothermal compression)
+  v4: number;               // end of isothermal compression (start of adiabatic compression)
+  heatAbsorbedQH: number;   // Q_H = n * R * T_H * ln(v2 / v1) (J)
+  heatRejectedQC: number;   // Q_C = n * R * T_C * ln(v3 / v4) (J)
+  netWork: number;          // W_net = Q_H - Q_C (J)
+  actualEfficiency: number; // W_net / Q_H
+  gamma: number;
+}
+
+export function calculateCarnotCycle(
+  tempHotK: number,
+  tempColdK: number,
+  nMoles: number = 1.0,
+  v1M3: number = 0.002,
+  v2M3: number = 0.004,
+  degreesOfFreedom: number = 3
+): CarnotCycleState {
+  const th = Math.max(10, tempHotK);
+  const tc = Math.max(5, Math.min(th - 1, tempColdK));
+  const n = Math.max(0.01, nMoles);
+  const f = Math.max(3, degreesOfFreedom);
+  const gamma = (f + 2) / f;
+
+  const v1 = Math.max(0.0005, v1M3);
+  const v2 = Math.max(v1 * 1.05, v2M3);
+
+  // In Carnot cycle:
+  // 1 -> 2: Isothermal at T_H: Q_H = n R T_H ln(v2 / v1)
+  const qH = n * GAS_CONSTANT_R * th * Math.log(v2 / v1);
+
+  // 2 -> 3: Adiabatic from T_H to T_C: T_H * V2^(gamma-1) = T_C * V3^(gamma-1)
+  // V3 = V2 * (T_H / T_C)^(1 / (gamma - 1))
+  const tempRatio = th / tc;
+  const adiabaticVolRatio = Math.pow(tempRatio, 1.0 / (gamma - 1));
+  const v3 = v2 * adiabaticVolRatio;
+
+  // 4 -> 1: Adiabatic from T_C to T_H: T_C * V4^(gamma-1) = T_H * V1^(gamma-1)
+  // V4 = V1 * (T_H / T_C)^(1 / (gamma - 1))
+  const v4 = v1 * adiabaticVolRatio;
+
+  // 3 -> 4: Isothermal at T_C: Q_C = n R T_C ln(v3 / v4)
+  // Note: v3/v4 = (v2*ratio) / (v1*ratio) = v2 / v1!
+  const qC = n * GAS_CONSTANT_R * tc * Math.log(v3 / v4);
+
+  const wNet = qH - qC;
+  const etaCarnot = 1.0 - tc / th;
+  const etaActual = qH > 0 ? wNet / qH : 0;
+
+  return {
+    tempHot: th,
+    tempCold: tc,
+    carnotEfficiency: etaCarnot,
+    carnotEfficiencyPercent: etaCarnot * 100,
+    nMoles: n,
+    v1,
+    v2,
+    v3,
+    v4,
+    heatAbsorbedQH: qH,
+    heatRejectedQC: qC,
+    netWork: wNet,
+    actualEfficiency: etaActual,
+    gamma,
+  };
+}
+
+// --- 8.4 CALORIMETRIA E MUDANÇAS DE FASE ---
+export interface CalorimetrySubstance {
+  name: string;
+  massG: number;             // grams
+  specificHeat: number;      // cal / (g * °C) (1 cal/g°C = 4184 J/kg°C)
+  initialTempC: number;      // °C
+  latentHeatFusion?: number; // cal / g (e.g. 80 cal/g for ice)
+}
+
+export interface CalorimetryResult {
+  equilibriumTempC: number;  // °C
+  equilibriumTempK: number;  // K
+  heatTransferredCal: number;// cal
+  heatTransferredJoules: number; // J (1 cal = 4.184 J)
+  iceMeltedFraction?: number; // 0 to 1
+  isConservationSatisfied: boolean;
+}
+
+export function calculateCalorimetryEquilibrium(
+  liquid: CalorimetrySubstance,
+  solid: CalorimetrySubstance
+): CalorimetryResult {
+  const m1 = Math.max(0.1, liquid.massG);
+  const c1 = Math.max(0.01, liquid.specificHeat);
+  const t1 = liquid.initialTempC;
+
+  const m2 = Math.max(0.1, solid.massG);
+  const c2 = Math.max(0.01, solid.specificHeat);
+  const t2 = solid.initialTempC;
+
+  // Check if solid is ice undergoing phase change at 0°C
+  const isIce = solid.name.toLowerCase().includes('gelo') && solid.latentHeatFusion !== undefined;
+
+  let te = 0;
+  let iceMeltedFraction = 1.0;
+
+  if (isIce && t2 <= 0 && solid.latentHeatFusion) {
+    const lFusion = solid.latentHeatFusion; // 80 cal/g
+    // Heat needed to warm ice to 0°C
+    const qWarmIce = m2 * c2 * (0 - t2);
+    // Heat needed to melt all ice
+    const qMeltIce = m2 * lFusion;
+    // Heat available from liquid cooling to 0°C
+    const qCoolLiquidToZero = m1 * c1 * (t1 - 0);
+
+    if (qCoolLiquidToZero >= qWarmIce + qMeltIce) {
+      // All ice melts and resulting water warms up with liquid
+      const qRemaining = qCoolLiquidToZero - (qWarmIce + qMeltIce);
+      // Thermal equilibrium of (m1 + m2) of water (c_water = 1.0)
+      te = qRemaining / (m1 * c1 + m2 * 1.0);
+      iceMeltedFraction = 1.0;
+    } else if (qCoolLiquidToZero >= qWarmIce) {
+      // Ice reaches 0°C, partially melts, equilibrium at 0°C
+      const qForMelting = qCoolLiquidToZero - qWarmIce;
+      iceMeltedFraction = qForMelting / qMeltIce;
+      te = 0;
+    } else {
+      // Liquid freezes into ice below 0°C (sub-zero equilibrium)
+      te = (m1 * c1 * t1 + m2 * c2 * t2) / (m1 * c1 + m2 * c2);
+      iceMeltedFraction = 0;
+    }
+  } else {
+    // Standard sensible heat equilibrium: m1*c1*(Te - T1) + m2*c2*(Te - T2) = 0
+    // Te * (m1*c1 + m2*c2) = m1*c1*T1 + m2*c2*T2
+    te = (m1 * c1 * t1 + m2 * c2 * t2) / (m1 * c1 + m2 * c2);
+  }
+
+  // Heat exchanged by liquid: Q1 = m1 * c1 * (Te - T1)
+  const qCal = Math.abs(m1 * c1 * (te - t1));
+  const qJoules = qCal * 4.184;
+
+  return {
+    equilibriumTempC: te,
+    equilibriumTempK: te + 273.15,
+    heatTransferredCal: qCal,
+    heatTransferredJoules: qJoules,
+    iceMeltedFraction,
+    isConservationSatisfied: true,
+  };
+}
+
+// -------------------------------------------------------------
+// 9. ELETRICIDADE (LEI DE COULOMB E CAMPO ELÉTRICO)
+// -------------------------------------------------------------
+
+export const COULOMB_CONSTANT_K = 8.9875517923e9; // N * m^2 / C^2 (vacuum permittivity constant 1/(4 * pi * epsilon_0))
+
+export interface CoulombState {
+  q1MicroC: number;         // microCoulombs (10^-6 C)
+  q2MicroC: number;         // microCoulombs
+  q1Coulombs: number;       // C
+  q2Coulombs: number;       // C
+  distanceM: number;        // r (m)
+  forceMagnitudeN: number;  // |F| = k * |q1 * q2| / r^2 (N)
+  forceSignedN: number;     // positive for repulsion, negative for attraction
+  interactionType: 'repulsive' | 'attractive' | 'neutral';
+  constantK: number;        // N * m^2 / C^2
+}
+
+export function calculateCoulombLaw(
+  q1MicroC: number,
+  q2MicroC: number,
+  distanceM: number,
+  constantK: number = COULOMB_CONSTANT_K
+): CoulombState {
+  const r = Math.max(0.01, distanceM);
+  const q1 = q1MicroC * 1e-6;
+  const q2 = q2MicroC * 1e-6;
+
+  const product = q1 * q2;
+  const forceMag = (constantK * Math.abs(product)) / (r * r);
+  const forceSigned = (constantK * product) / (r * r);
+
+  let interactionType: 'repulsive' | 'attractive' | 'neutral' = 'neutral';
+  if (Math.abs(product) > 1e-15) {
+    interactionType = product > 0 ? 'repulsive' : 'attractive';
+  }
+
+  return {
+    q1MicroC,
+    q2MicroC,
+    q1Coulombs: q1,
+    q2Coulombs: q2,
+    distanceM: r,
+    forceMagnitudeN: forceMag,
+    forceSignedN: forceSigned,
+    interactionType,
+    constantK,
+  };
+}
+
+export interface PointCharge3D {
+  id: string;
+  qMicroC: number;          // microCoulombs
+  x: number;                // m
+  y: number;                // m
+  z: number;                // m
+}
+
+export interface ElectricFieldPoint {
+  x: number;
+  y: number;
+  z: number;
+  ex: number;               // N/C (or V/m)
+  ey: number;
+  ez: number;
+  magnitude: number;        // |E| (N/C)
+  potentialV: number;       // Electric potential V = sum(k * q / r) (Volts)
+}
+
+export function calculateElectricFieldAtPoint(
+  charges: PointCharge3D[],
+  point: { x: number; y: number; z: number },
+  constantK: number = COULOMB_CONSTANT_K
+): ElectricFieldPoint {
+  let ex = 0;
+  let ey = 0;
+  let ez = 0;
+  let potential = 0;
+
+  for (const c of charges) {
+    const qC = c.qMicroC * 1e-6;
+    const dx = point.x - c.x;
+    const dy = point.y - c.y;
+    const dz = point.z - c.z;
+    const r2 = dx * dx + dy * dy + dz * dz;
+    const r = Math.sqrt(r2);
+
+    // Singularity protection when evaluating near point charge
+    if (r < 0.05) continue;
+
+    // E_i = k * q_i / r^2 * (r_hat) = k * q_i / r^3 * vec(r)
+    const factor = (constantK * qC) / (r * r * r);
+    ex += factor * dx;
+    ey += factor * dy;
+    ez += factor * dz;
+
+    // V_i = k * q_i / r
+    potential += (constantK * qC) / r;
+  }
+
+  const mag = Math.sqrt(ex * ex + ey * ey + ez * ez);
+
+  return {
+    x: point.x,
+    y: point.y,
+    z: point.z,
+    ex,
+    ey,
+    ez,
+    magnitude: mag,
+    potentialV: potential,
+  };
+}
+
+// -------------------------------------------------------------
+// 23. POTENCIAL ELÉTRICO E TRABALHO ELETROSTÁTICO
+// -------------------------------------------------------------
+export interface ElectricWorkState {
+  vA: number;             // Potential at point A (Volts)
+  vB: number;             // Potential at point B (Volts)
+  deltaV: number;         // V_B - V_A (Volts)
+  q0Coulombs: number;     // Test charge (Coulombs)
+  workElectricJ: number;  // W_elec = q0 * (V_A - V_B) = -q0 * deltaV (Joules)
+  workExternalJ: number;  // W_ext = q0 * (V_B - V_A) = q0 * deltaV (Joules)
+}
+
+export function calculateElectricWork(
+  charges: PointCharge3D[],
+  pointA: { x: number; y: number; z: number },
+  pointB: { x: number; y: number; z: number },
+  q0MicroC: number,
+  constantK: number = COULOMB_CONSTANT_K
+): ElectricWorkState {
+  const pA = calculateElectricFieldAtPoint(charges, pointA, constantK);
+  const pB = calculateElectricFieldAtPoint(charges, pointB, constantK);
+  const q0 = q0MicroC * 1e-6;
+  const deltaV = pB.potentialV - pA.potentialV;
+  const workElectricJ = q0 * (pA.potentialV - pB.potentialV);
+  const workExternalJ = q0 * deltaV;
+
+  return {
+    vA: pA.potentialV,
+    vB: pB.potentialV,
+    deltaV,
+    q0Coulombs: q0,
+    workElectricJ,
+    workExternalJ,
+  };
+}
+
+// -------------------------------------------------------------
+// 24. CAPACITOR DE PLACAS PARALELAS E ENERGIA ELETROSTÁTICA
+// -------------------------------------------------------------
+export const VACUUM_PERMITTIVITY_EPSILON_0 = 8.8541878128e-12; // F/m (ou C^2/(N·m^2))
+
+export interface ParallelCapacitorState {
+  areaM2: number;                // Plate surface area (m^2)
+  distanceM: number;             // Plate separation distance (m)
+  voltageV: number;              // Applied voltage V (Volts)
+  dielectricConstant: number;    // Relative permittivity kappa (dimensionless)
+  effectivePermittivity: number; // epsilon = kappa * epsilon_0 (F/m)
+  capacitanceF: number;          // C = epsilon * A / d (Farads)
+  capacitancePF: number;         // C in picoFarads (pF)
+  electricFieldVPerM: number;    // Uniform E = V / d (V/m or N/C)
+  storedChargeC: number;         // Q = C * V (Coulombs)
+  storedChargeMicroC: number;    // Q in microCoulombs (µC)
+  storedEnergyJ: number;         // U = 0.5 * C * V^2 (Joules)
+  storedEnergyMicroJ: number;    // U in microJoules (µJ)
+  energyDensityJPerM3: number;   // u = 0.5 * epsilon * E^2 (J/m^3)
+}
+
+export function calculateParallelPlateCapacitor(
+  areaM2: number,
+  distanceM: number,
+  voltageV: number,
+  dielectricConstant: number = 1.0,
+  epsilon0: number = VACUUM_PERMITTIVITY_EPSILON_0
+): ParallelCapacitorState {
+  // Clamped physical safeguards
+  const safeArea = Math.max(1e-4, areaM2);
+  const safeDistance = Math.max(1e-4, distanceM);
+  const safeVoltage = Math.max(0, voltageV);
+  const safeKappa = Math.max(1.0, dielectricConstant);
+
+  const epsilon = safeKappa * epsilon0;
+  const capacitance = (epsilon * safeArea) / safeDistance;
+  const electricField = safeVoltage / safeDistance;
+  const charge = capacitance * safeVoltage;
+  const energy = 0.5 * capacitance * safeVoltage * safeVoltage;
+  const energyDensity = 0.5 * epsilon * electricField * electricField;
+
+  return {
+    areaM2: safeArea,
+    distanceM: safeDistance,
+    voltageV: safeVoltage,
+    dielectricConstant: safeKappa,
+    effectivePermittivity: epsilon,
+    capacitanceF: capacitance,
+    capacitancePF: capacitance * 1e12,
+    electricFieldVPerM: electricField,
+    storedChargeC: charge,
+    storedChargeMicroC: charge * 1e6,
+    storedEnergyJ: energy,
+    storedEnergyMicroJ: energy * 1e6,
+    energyDensityJPerM3: energyDensity,
+  };
+}
+
