@@ -4,7 +4,9 @@ import { calculateElectricFieldAtPoint, calculateElectricWork, PointCharge3D, CO
 import { SimulationClock, DataPoint, ChartSeries } from '../../types/physics';
 import { ScientificChart } from '../common/ScientificChart';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, RotateCcw, Activity, Zap, Target, Crosshair, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Sliders, RotateCcw, Activity, Zap, Target, Crosshair, ArrowRight, ShieldCheck, Ruler } from 'lucide-react';
+import { MeasurementToolsOverlay } from '../common/MeasurementToolsOverlay';
+import { probeElectricFieldAndPotential } from '../../physics/measurement';
 
 import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
@@ -47,7 +49,48 @@ export const ElectricPotential3D: React.FC<ElectricPotential3DProps> = ({
     () => (initialParams?.posB != null ? initialParams.posB : { x: 0.0, y: 0.5, z: 0.0 })
   );
 
-  const applyPreset = useCallback((p: Record<string, any>) => {
+  const applyPreset = useCallback((p: string | Record<string, any>) => {
+    if (typeof p === 'string') {
+      switch (p) {
+        case 'dipole':
+          setMode('two_charges');
+          setQ1MicroC(3.0);
+          setQ2MicroC(-3.0);
+          setSeparationM(0.8);
+          setPosA({ x: 0.4, y: 0.2, z: 0 });
+          setPosB({ x: -0.4, y: 0.2, z: 0 });
+          break;
+        case 'repulsion':
+          setMode('two_charges');
+          setQ1MicroC(3.0);
+          setQ2MicroC(3.0);
+          setSeparationM(0.8);
+          setPosA({ x: 0.0, y: 0.5, z: 0 });
+          setPosB({ x: 0.0, y: 0.1, z: 0 });
+          break;
+        case 'single_positive':
+          setMode('single_charge');
+          setQ1MicroC(4.0);
+          setPosA({ x: 0.4, y: 0.0, z: 0 });
+          setPosB({ x: 0.8, y: 0.0, z: 0 });
+          break;
+        case 'single_negative':
+          setMode('single_charge');
+          setQ1MicroC(-4.0);
+          setPosA({ x: 0.4, y: 0.0, z: 0 });
+          setPosB({ x: 0.8, y: 0.0, z: 0 });
+          break;
+        case 'asymmetric':
+          setMode('two_charges');
+          setQ1MicroC(5.0);
+          setQ2MicroC(-2.0);
+          setSeparationM(0.9);
+          setPosA({ x: 0.3, y: 0.2, z: 0 });
+          setPosB({ x: -0.2, y: 0.4, z: 0 });
+          break;
+      }
+      return;
+    }
     if (p.mode !== undefined) setMode(p.mode);
     if (p.q1MicroC !== undefined) setQ1MicroC(Number(p.q1MicroC));
     if (p.q2MicroC !== undefined) setQ2MicroC(Number(p.q2MicroC));
@@ -98,10 +141,25 @@ export const ElectricPotential3D: React.FC<ElectricPotential3DProps> = ({
     ];
   }, [mode, q1MicroC, q2MicroC, separationM]);
 
+  // Ferramentas de Medição (Régua 3D e Sonda Pontual)
+  const [isRulerActive, setIsRulerActive] = useState<boolean>(false);
+  const [isProbeActive, setIsProbeActive] = useState<boolean>(false);
+
   // Work and Potential Calculations
   const workState: ElectricWorkState = useMemo(() => {
     return calculateElectricWork(charges, posA, posB, q0MicroC, COULOMB_CONSTANT_K);
   }, [charges, posA, posB, q0MicroC]);
+
+  // Sonda Pontual de Campo e Potencial Elétrico
+  const probeFieldResult = useMemo(() => {
+    const chargeList = charges.map((c) => ({
+      q: c.qMicroC * 1e-6,
+      x: c.x,
+      y: c.y,
+      z: c.z,
+    }));
+    return probeElectricFieldAndPotential(posB, chargeList, COULOMB_CONSTANT_K);
+  }, [charges, posB]);
 
   // Three.js References
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -649,8 +707,30 @@ export const ElectricPotential3D: React.FC<ElectricPotential3DProps> = ({
             </div>
           )}
 
-          <div className="absolute top-3 right-3 text-[10px] font-mono text-slate-400 bg-slate-900/60 px-2 py-1 rounded border border-slate-800 pointer-events-none hidden sm:block">
-            Esferas translúcidas = Superfícies Equipotenciais
+          {/* Top Right Measurement Tools Overlay */}
+          <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2 pointer-events-auto">
+            <MeasurementToolsOverlay
+              isRulerActive={isRulerActive}
+              onToggleRuler={() => setIsRulerActive(!isRulerActive)}
+              rulerPointA={posA}
+              rulerPointB={posB}
+              onChangePointA={setPosA}
+              onChangePointB={setPosB}
+              rulerMaxRange={1.5}
+              isProbeActive={isProbeActive}
+              onToggleProbe={() => setIsProbeActive(!isProbeActive)}
+              probeData={{
+                title: 'Sonda Eletrostática Pontual',
+                coord: posB,
+                quantities: [
+                  { label: 'Potencial V', value: `${(workState.vB / 1000).toFixed(2)}`, unit: 'kV', highlight: true },
+                  { label: 'Campo |E|', value: `${(probeFieldResult.fieldMagnitude / 1000).toFixed(1)}`, unit: 'kV/m' },
+                  { label: 'Ex', value: `${(probeFieldResult.fieldVector.x / 1000).toFixed(1)}`, unit: 'kV/m' },
+                  { label: 'Ey', value: `${(probeFieldResult.fieldVector.y / 1000).toFixed(1)}`, unit: 'kV/m' },
+                ],
+                status: `Trabalho A→B: ${(workState.workElectricJ * 1000).toFixed(2)} mJ`,
+              }}
+            />
           </div>
         </div>
 

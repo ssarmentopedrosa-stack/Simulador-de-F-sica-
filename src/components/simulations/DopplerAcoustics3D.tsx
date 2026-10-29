@@ -7,6 +7,8 @@ import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
 import { labAudio } from '../common/AudioController';
 import { Sliders, HelpCircle, Volume2, VolumeX, Radio, Activity } from 'lucide-react';
+import { MeasurementToolsOverlay } from '../common/MeasurementToolsOverlay';
+import { Point3D } from '../../physics/measurement';
 
 import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
@@ -69,9 +71,23 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({
     }
   }, [initialParams]);
 
-  // Audio state
+  // Audio state (começa mudo por padrão, volume baixo 0.08)
   const [audioActive, setAudioActive] = useState<boolean>(false);
-  const [volume, setVolume] = useState<number>(0.2);
+  const [volume, setVolume] = useState<number>(0.08);
+
+  // Ferramentas de medição (Régua 3D e Sonda de Inspeção Acústica)
+  const [isRulerActive, setIsRulerActive] = useState<boolean>(false);
+  const [rulerPointA, setRulerPointA] = useState<Point3D>({ x: -10, y: 0, z: 0 });
+  const [rulerPointB, setRulerPointB] = useState<Point3D>({ x: 20, y: 0, z: 1.8 });
+  const [isProbeActive, setIsProbeActive] = useState<boolean>(false);
+  const [probeX, setProbeX] = useState<number>(20);
+
+  // Parar qualquer áudio ao desmontar ou trocar de lab
+  useEffect(() => {
+    return () => {
+      labAudio.silenceAll();
+    };
+  }, []);
 
   // Clock
   const [clock, setClock] = useState<SimulationClock>({
@@ -102,6 +118,7 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({
   const ringPoolRef = useRef<THREE.Mesh[]>([]);
   const srcArrowRef = useRef<THREE.ArrowHelper | null>(null);
   const obsArrowRef = useRef<THREE.ArrowHelper | null>(null);
+  const rulerGroupRef = useRef<THREE.Group | null>(null);
   const lastEmitTimeRef = useRef<number>(0);
   const animFrameRef = useRef<number | null>(null);
   const cameraAngleRef = useRef<{ theta: number; phi: number; radius: number }>({
@@ -290,6 +307,11 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({
     srcArrowRef.current = srcArrow;
     obsArrowRef.current = obsArrow;
 
+    // Visual 3D Ruler Group
+    const rulerGroup = new THREE.Group();
+    scene.add(rulerGroup);
+    rulerGroupRef.current = rulerGroup;
+
     // Mouse drag
     const onMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
@@ -471,6 +493,39 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({
     };
   }, [clock.isRunning, clock.speed, clock.is2DView, clock.showVectors, sourceSpeed, observerSpeed, soundSpeed]);
 
+  // Atualização visual da Régua 3D na cena Doppler
+  useEffect(() => {
+    const group = rulerGroupRef.current;
+    if (!group) return;
+
+    while (group.children.length > 0) {
+      const obj = group.children[0];
+      group.remove(obj);
+      if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+    }
+
+    if (!isRulerActive) return;
+
+    const scale = 0.1;
+    const pA = new THREE.Vector3(rulerPointA.x * scale, rulerPointA.y + 0.15, rulerPointA.z);
+    const pB = new THREE.Vector3(rulerPointB.x * scale, rulerPointB.y + 0.15, rulerPointB.z);
+
+    const matA = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const matB = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+    const lineMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.2, gapSize: 0.1 });
+
+    const sphereA = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), matA);
+    sphereA.position.copy(pA);
+    const sphereB = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), matB);
+    sphereB.position.copy(pB);
+
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([pA, pB]);
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.computeLineDistances();
+
+    group.add(sphereA, sphereB, line);
+  }, [isRulerActive, rulerPointA, rulerPointB]);
+
   const chartSeries: ChartSeries[] = [
     { key: 'fObs', label: 'Frequência Percebida f_obs', color: '#38bdf8', unit: 'Hz' },
     { key: 'fSource', label: 'Frequência Emitida f₀', color: '#94a3b8', unit: 'Hz' },
@@ -512,15 +567,59 @@ export const DopplerAcoustics3D: React.FC<DopplerAcoustics3DProps> = ({
             </div>
           </div>
 
-          {onOpenExperiment && (
-            <button
-              onClick={onOpenExperiment}
-              className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold rounded-md shadow-lg transition-colors border border-blue-400/40"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Experimento Guiado</span>
-            </button>
-          )}
+          {/* Top Right Controls & Measurement Tools Overlay */}
+          <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2 pointer-events-auto">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAudioActive(!audioActive)}
+                aria-label={audioActive ? 'Desativar áudio do efeito Doppler' : 'Ativar áudio do efeito Doppler'}
+                aria-pressed={audioActive}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg transition-colors border cursor-pointer ${
+                  audioActive
+                    ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-300 font-bold'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title={audioActive ? 'Silenciar tom de áudio' : 'Ouvir a frequência sonora do observador'}
+              >
+                {audioActive ? <Volume2 className="w-3.5 h-3.5 text-slate-950" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+                <span>{audioActive ? 'Som Ligado' : 'Áudio Mudo'}</span>
+              </button>
+
+              {onOpenExperiment && (
+                <button
+                  onClick={onOpenExperiment}
+                  aria-label="Abrir roteiro de experimento guiado de Doppler"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold rounded-md shadow-lg transition-colors border border-blue-400/40 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>Experimento Guiado</span>
+                </button>
+              )}
+            </div>
+
+            <MeasurementToolsOverlay
+              isRulerActive={isRulerActive}
+              onToggleRuler={() => setIsRulerActive(!isRulerActive)}
+              rulerPointA={rulerPointA}
+              rulerPointB={rulerPointB}
+              onChangePointA={setRulerPointA}
+              onChangePointB={setRulerPointB}
+              rulerMaxRange={80.0}
+              isProbeActive={isProbeActive}
+              onToggleProbe={() => setIsProbeActive(!isProbeActive)}
+              probeData={{
+                title: 'Sonda Acústica do Doppler',
+                coord: { x: probeX, y: 0, z: 0 },
+                quantities: [
+                  { label: 'Freq. Observada (f_obs)', value: `${currentState.observedFreq.toFixed(1)}`, unit: 'Hz', highlight: true },
+                  { label: 'Freq. Fonte (f₀)', value: `${sourceFreq.toFixed(0)}`, unit: 'Hz' },
+                  { label: 'λ Frontal', value: `${currentState.wavelengthAhead.toFixed(2)}`, unit: 'm' },
+                  { label: 'λ Traseiro', value: `${currentState.wavelengthBehind.toFixed(2)}`, unit: 'm' },
+                ],
+                status: currentState.isApproaching ? 'Frente de Onda Comprimida (Aproximação)' : 'Frente de Onda Rarefeita (Afastamento)',
+              }}
+            />
+          </div>
 
           {/* Instantaneous Values */}
           <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2 overflow-x-auto z-10 pointer-events-none">

@@ -6,7 +6,8 @@ import { Sparkles, Link2, Check } from 'lucide-react';
 
 interface ClassicPresetsBarProps {
   moduleId: ModuleId;
-  onApplyPreset: (params: Record<string, any>) => void;
+  onApplyPreset?: (params: Record<string, any>) => void;
+  onSelectPreset?: (params: Record<string, any>) => void;
   currentParams?: Record<string, any>;
   className?: string;
   showShareButton?: boolean;
@@ -15,10 +16,15 @@ interface ClassicPresetsBarProps {
 export const ClassicPresetsBar: React.FC<ClassicPresetsBarProps> = ({
   moduleId,
   onApplyPreset,
+  onSelectPreset,
   currentParams,
   className = '',
   showShareButton = true,
 }) => {
+  const triggerPreset = (params: Record<string, any>) => {
+    if (onSelectPreset) onSelectPreset(params);
+    else if (onApplyPreset) onApplyPreset(params);
+  };
   const presets = LAB_PRESETS[moduleId] || [];
   const [copied, setCopied] = useState(false);
 
@@ -52,6 +58,8 @@ export const ClassicPresetsBar: React.FC<ClassicPresetsBarProps> = ({
 
   return (
     <div
+      role="region"
+      aria-label="Cenários didáticos e exemplos clássicos"
       className={`bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 flex flex-col gap-2 shrink-0 ${className}`}
     >
       {/* Top Header Row with Title and Copy Link Button */}
@@ -64,6 +72,7 @@ export const ClassicPresetsBar: React.FC<ClassicPresetsBarProps> = ({
         {showShareButton && (
           <button
             onClick={handleCopyLink}
+            aria-label="Copiar link da simulação com parâmetros atuais para compartilhar"
             className={`text-[11px] px-2 py-0.5 rounded border transition-all flex items-center gap-1 cursor-pointer font-medium ${
               copied
                 ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
@@ -87,13 +96,15 @@ export const ClassicPresetsBar: React.FC<ClassicPresetsBarProps> = ({
       </div>
 
       {/* Row of Preset Buttons */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Botões de exemplos clássicos">
         {presets.map((preset) => {
           const active = isPresetActive(preset);
           return (
             <button
               key={preset.id}
-              onClick={() => onApplyPreset(preset.params)}
+              onClick={() => triggerPreset(preset.params)}
+              aria-label={`Aplicar cenário ${preset.label}`}
+              aria-pressed={active}
               title={preset.description}
               className={`px-2.5 py-1 text-xs rounded border transition-all cursor-pointer flex items-center gap-1.5 ${
                 active

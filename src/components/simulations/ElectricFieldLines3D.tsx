@@ -41,7 +41,53 @@ export const ElectricFieldLines3D: React.FC<ElectricFieldLines3DProps> = ({
   );
   const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
 
-  const applyPreset = useCallback((p: Record<string, any>) => {
+  const applyPreset = useCallback((p: string | Record<string, any>) => {
+    if (typeof p === 'string') {
+      switch (p) {
+        case 'dipole':
+          setMode('two_charges');
+          setQ1MicroC(4.0);
+          setQ2MicroC(-4.0);
+          setSeparationM(0.9);
+          setProbeX(0.0);
+          setProbeY(0.4);
+          setProbeZ(0.0);
+          break;
+        case 'repulsion':
+          setMode('two_charges');
+          setQ1MicroC(4.0);
+          setQ2MicroC(4.0);
+          setSeparationM(1.0);
+          setProbeX(0.0);
+          setProbeY(0.2);
+          setProbeZ(0.0);
+          break;
+        case 'single_positive':
+          setMode('single_charge');
+          setQ1MicroC(5.0);
+          setProbeX(0.6);
+          setProbeY(0.3);
+          setProbeZ(0.0);
+          break;
+        case 'single_negative':
+          setMode('single_charge');
+          setQ1MicroC(-5.0);
+          setProbeX(0.6);
+          setProbeY(0.3);
+          setProbeZ(0.0);
+          break;
+        case 'asymmetric':
+          setMode('two_charges');
+          setQ1MicroC(6.0);
+          setQ2MicroC(-2.0);
+          setSeparationM(1.1);
+          setProbeX(0.2);
+          setProbeY(0.35);
+          setProbeZ(0.0);
+          break;
+      }
+      return;
+    }
     if (p.mode !== undefined) setMode(p.mode);
     if (p.q1MicroC !== undefined) setQ1MicroC(Number(p.q1MicroC));
     if (p.q2MicroC !== undefined) setQ2MicroC(Number(p.q2MicroC));

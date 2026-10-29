@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { ChartSeries, DataPoint } from '../../types/physics';
 import { Download, Table, Eye, EyeOff } from 'lucide-react';
+import { formatDataToBrazilianCsv, downloadSimulationCsv } from '../../physics/csvExport';
 
 interface ScientificChartProps {
   data: DataPoint[];
@@ -35,21 +36,12 @@ export const ScientificChart: React.FC<ScientificChartProps> = ({
     setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // CSV Export
+  // CSV Export no padrão brasileiro (; e vírgula decimal)
   const exportCSV = () => {
     if (data.length === 0) return;
-    const header = [xLabel + ' (' + xUnit + ')', ...series.map((s) => `${s.label} (${s.unit})`)].join(',');
-    const rows = data.map((d) => {
-      return [d.t.toFixed(4), ...series.map((s) => (d[s.key] !== undefined ? d[s.key].toFixed(4) : ''))].join(',');
-    });
-    const csvContent = 'data:text/csv;charset=utf-8,' + [header, ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ondas_lab_dados_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const csvContent = formatDataToBrazilianCsv(data, series, xLabel, xUnit);
+    const safeTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30);
+    downloadSimulationCsv(`ondas_lab_${safeTitle}_${Date.now()}.csv`, csvContent);
   };
 
   // Find min/max values
@@ -286,15 +278,18 @@ export const ScientificChart: React.FC<ScientificChartProps> = ({
               showTable ? 'bg-cyan-950/40 border-cyan-800 text-cyan-300' : 'bg-slate-800'
             }`}
             title="Exibir tabela de dados"
+            aria-label="Exibir tabela de dados numéricos"
           >
             <Table className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={exportCSV}
-            className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-800"
-            title="Exportar CSV de medições"
+            aria-label="Exportar medições em CSV"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-xs cursor-pointer"
+            title="Exportar CSV (padrão brasileiro: ';' e vírgula decimal)"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Exportar CSV</span>
           </button>
         </div>
       </div>

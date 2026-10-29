@@ -5,8 +5,10 @@ import { SimulationClock, DataPoint, ChartSeries, PhysicalQuantity } from '../..
 import { ScientificChart } from '../common/ScientificChart';
 import { KaTeXMath } from '../common/KaTeXMath';
 import { PlaybackBar } from '../common/PlaybackBar';
-import { Sliders, HelpCircle, Layers, Activity } from 'lucide-react';
-
+import { Sliders, HelpCircle, Layers, Activity, Volume2, VolumeX } from 'lucide-react';
+import { labAudio } from '../common/AudioController';
+import { MeasurementToolsOverlay } from '../common/MeasurementToolsOverlay';
+import { Point3D, calculateStandingWaveSpacing, probeStandingWaveAt } from '../../physics/measurement';
 import { ClassicPresetsBar } from '../common/ClassicPresetsBar';
 
 interface StandingWaves3DProps {
@@ -39,6 +41,18 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({
     () => (initialParams?.amplitude != null ? Number(initialParams.amplitude) : 0.7)
   );
   const [activeSideTab, setActiveSideTab] = useState<'controls' | 'graphs'>('controls');
+
+  // Audio state (começa mudo, volume baixo por padrão 0.08)
+  const [audioActive, setAudioActive] = useState<boolean>(false);
+  const [volume, setVolume] = useState<number>(0.08);
+
+  // Measurement Tools (Régua 3D, Sonda de Inspeção e Cotas λ/2)
+  const [isRulerActive, setIsRulerActive] = useState<boolean>(false);
+  const [rulerPointA, setRulerPointA] = useState<Point3D>({ x: 0, y: 0, z: 0 });
+  const [rulerPointB, setRulerPointB] = useState<Point3D>({ x: 1.0, y: 0, z: 0 });
+  const [isProbeActive, setIsProbeActive] = useState<boolean>(false);
+  const [probeX, setProbeX] = useState<number>(1.0);
+  const [showHarmonicMarkers, setShowHarmonicMarkers] = useState<boolean>(true);
 
   const applyPreset = useCallback((p: Record<string, any>) => {
     if (p.boundary !== undefined) setBoundary(p.boundary);
@@ -86,6 +100,38 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({
     [length, waveSpeed, harmonic, boundary]
   );
 
+  // Espaçamento de nós e ventres (λ/2)
+  const spacingData = useMemo(() => {
+    return calculateStandingWaveSpacing(length, waveSpeed, harmonic, boundary);
+  }, [length, waveSpeed, harmonic, boundary]);
+
+  // Sonda de inspeção pontual
+  const probeResult = useMemo(() => {
+    return probeStandingWaveAt(probeX, clock.time, length, waveSpeed, harmonic, boundary, amplitude);
+  }, [probeX, clock.time, length, waveSpeed, harmonic, boundary, amplitude]);
+
+  // Áudio senoidal da ressonância acústica (Web Audio API)
+  useEffect(() => {
+    if (!audioActive || !clock.isRunning) {
+      labAudio.stop();
+      return;
+    }
+    labAudio.setEnabled(true);
+    labAudio.setVolume(volume);
+    labAudio.playTone(waveInfo.frequency);
+
+    return () => {
+      labAudio.stop();
+    };
+  }, [audioActive, clock.isRunning, volume, waveInfo.frequency]);
+
+  // Parar áudio ao desmontar o componente
+  useEffect(() => {
+    return () => {
+      labAudio.silenceAll();
+    };
+  }, []);
+
   // Three.js mutable refs
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -95,6 +141,8 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({
   const envelopeLineNegRef = useRef<THREE.Line | null>(null);
   const nodesMarkersGroupRef = useRef<THREE.Group | null>(null);
   const pipeAcousticGroupRef = useRef<THREE.Group | null>(null);
+  const rulerGroupRef = useRef<THREE.Group | null>(null);
+  const probeGroupRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const cameraAngleRef = useRef<{ theta: number; phi: number; radius: number }>({
     theta: 0.35,
@@ -236,6 +284,15 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({
     pipeGroup.visible = false;
     scene.add(pipeGroup);
     pipeAcousticGroupRef.current = pipeGroup;
+
+    // Measurement Ruler and Probe Groups
+    const rulerGroup = new THREE.Group();
+    scene.add(rulerGroup);
+    rulerGroupRef.current = rulerGroup;
+
+    const probeGroup = new THREE.Group();
+    scene.add(probeGroup);
+    probeGroupRef.current = probeGroup;
 
     // Mouse drag
     const onMouseDown = (e: MouseEvent) => {
@@ -380,6 +437,130 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({
     };
   }, [clock.isRunning, clock.speed, clock.is2DView, length, waveSpeed, harmonic, boundary, amplitude]);
 
+  // Reconstrução visual de nós, ventres e cotas λ/2 na cena Three.js
+  useEffect(() => {
+    const group = nodesMarkersGroupRef.current;
+    if (!group) return;
+
+    while (group.children.length > 0) {
+      const obj = group.children[0];
+      group.remove(obj);
+      if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+    }
+
+    if (!showHarmonicMarkers) return;
+
+    const halfL = length / 2;
+    const nodeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const antinodeMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4 });
+    const guideMat = new THREE.LineDashedMaterial({ color: 0x64748b, dashSize: 0.05, gapSize: 0.05 });
+    const bracketMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2 });
+
+    // Nós (esferas vermelhas e linhas guia)
+    waveInfo.nodePositions.forEach((pos) => {
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), nodeMat);
+      sphere.position.set(-halfL + pos, 0, 0);
+      group.add(sphere);
+
+      const guideGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-halfL + pos, -1.2, 0),
+        new THREE.Vector3(-halfL + pos, 1.2, 0),
+      ]);
+      const guide = new THREE.Line(guideGeo, guideMat);
+      guide.computeLineDistances();
+      group.add(guide);
+    });
+
+    // Ventres (esferas ciano)
+    waveInfo.antinodePositions.forEach((pos) => {
+      const bead = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), antinodeMat);
+      bead.position.set(-halfL + pos, 0, 0);
+      group.add(bead);
+    });
+
+    // Cota horizontal entre dois nós consecutivos (comprovando λ/2)
+    if (waveInfo.nodePositions.length >= 2) {
+      const x1 = -halfL + waveInfo.nodePositions[0];
+      const x2 = -halfL + waveInfo.nodePositions[1];
+      const yB = -1.0;
+
+      const bracketPoints = [
+        new THREE.Vector3(x1, yB + 0.1, 0),
+        new THREE.Vector3(x1, yB, 0),
+        new THREE.Vector3(x2, yB, 0),
+        new THREE.Vector3(x2, yB + 0.1, 0),
+      ];
+      const bracketGeo = new THREE.BufferGeometry().setFromPoints(bracketPoints);
+      const bracket = new THREE.Line(bracketGeo, bracketMat);
+      group.add(bracket);
+    }
+  }, [length, harmonic, waveSpeed, boundary, waveInfo, showHarmonicMarkers]);
+
+  // Atualização da Régua 3D na cena
+  useEffect(() => {
+    const group = rulerGroupRef.current;
+    if (!group) return;
+
+    while (group.children.length > 0) {
+      const obj = group.children[0];
+      group.remove(obj);
+      if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+    }
+
+    if (!isRulerActive) return;
+
+    const halfL = length / 2;
+    const ax = -halfL + Math.max(0, Math.min(length, rulerPointA.x));
+    const bx = -halfL + Math.max(0, Math.min(length, rulerPointB.x));
+
+    const pA = new THREE.Vector3(ax, rulerPointA.y, rulerPointA.z);
+    const pB = new THREE.Vector3(bx, rulerPointB.y, rulerPointB.z);
+
+    const matA = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const matB = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+    const sphereA = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), matA);
+    const sphereB = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), matB);
+    sphereA.position.copy(pA);
+    sphereB.position.copy(pB);
+    group.add(sphereA, sphereB);
+
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([pA, pB]);
+    const lineMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.1, gapSize: 0.05 });
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.computeLineDistances();
+    group.add(line);
+  }, [isRulerActive, rulerPointA, rulerPointB, length]);
+
+  // Atualização da Sonda na cena 3D
+  useEffect(() => {
+    const group = probeGroupRef.current;
+    if (!group) return;
+
+    while (group.children.length > 0) {
+      const obj = group.children[0];
+      group.remove(obj);
+      if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+    }
+
+    if (!isProbeActive) return;
+
+    const halfL = length / 2;
+    const px = -halfL + Math.max(0, Math.min(length, probeX));
+    const pMat = new THREE.MeshBasicMaterial({ color: 0xa855f7 });
+    const needleMat = new THREE.LineBasicMaterial({ color: 0xc084fc, linewidth: 2 });
+
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), pMat);
+    bead.position.set(px, probeResult.displacement, 0);
+    group.add(bead);
+
+    const needleGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(px, -1.3, 0),
+      new THREE.Vector3(px, 1.3, 0),
+    ]);
+    const needle = new THREE.Line(needleGeo, needleMat);
+    group.add(needle);
+  }, [isProbeActive, probeX, probeResult.displacement, length]);
+
   const chartSeries: ChartSeries[] = [
     { key: 'yMid', label: 'Deslocamento no Ponto Médio y(L/2, t)', color: '#38bdf8', unit: 'm' },
   ];
@@ -418,15 +599,112 @@ export const StandingWaves3D: React.FC<StandingWaves3DProps> = ({
             </div>
           </div>
 
-          {onOpenExperiment && (
-            <button
-              onClick={onOpenExperiment}
-              className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold rounded-md shadow-lg transition-colors border border-blue-400/40"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Experimento Guiado</span>
-            </button>
-          )}
+          {/* Top Right Tools & Controls */}
+          <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              {/* Botão de Áudio (Web Audio API) */}
+              <button
+                onClick={() => setAudioActive((prev) => !prev)}
+                aria-label={audioActive ? 'Desativar áudio da ressonância acústica' : 'Ativar áudio senoidal da ressonância'}
+                aria-pressed={audioActive}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg transition-all cursor-pointer border ${
+                  audioActive
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/50'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700/80'
+                }`}
+                title={audioActive ? 'Áudio ativado (frequência de ressonância f_n). Clique para mutar.' : 'Ativar tom senoidal da frequência de ressonância acústica f_n'}
+              >
+                {audioActive ? <Volume2 className="w-3.5 h-3.5 text-emerald-200" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+                <span>{audioActive ? 'Som Ligado' : 'Ativar Som'}</span>
+              </button>
+
+              {onOpenExperiment && (
+                <button
+                  onClick={onOpenExperiment}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold rounded-md shadow-lg transition-colors border border-blue-400/40 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>Experimento Guiado</span>
+                </button>
+              )}
+            </div>
+
+            {/* Controle de volume quando áudio estiver ativo */}
+            {audioActive && (
+              <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-2.5 py-1 rounded-md text-xs text-slate-300 shadow-md">
+                <span className="text-[10px] text-slate-400">Vol:</span>
+                <input
+                  type="range"
+                  min="0.01"
+                  max="0.25"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-20 accent-emerald-500 h-1 bg-slate-800 rounded cursor-pointer"
+                  aria-label="Volume do áudio"
+                />
+                <span className="font-mono text-[10px] text-emerald-300">{Math.round(volume * 100)}%</span>
+              </div>
+            )}
+
+            {/* Ferramentas de Medição (Régua 3D, Sonda de Inspeção e Cotas λ/2) */}
+            <MeasurementToolsOverlay
+              isRulerActive={isRulerActive}
+              onToggleRuler={() => setIsRulerActive((prev) => !prev)}
+              rulerPointA={rulerPointA}
+              rulerPointB={rulerPointB}
+              onChangePointA={setRulerPointA}
+              onChangePointB={setRulerPointB}
+              rulerMaxRange={length}
+              isProbeActive={isProbeActive}
+              onToggleProbe={() => setIsProbeActive((prev) => !prev)}
+              probeData={{
+                title: 'Sonda na Onda',
+                coord: { x: probeX, y: probeResult.displacement, z: 0 },
+                quantities: [
+                  { label: 'Deslocamento y(x,t)', value: probeResult.displacement.toFixed(3).replace('.', ','), unit: 'm', highlight: true },
+                  { label: 'Envoltória A(x)', value: probeResult.envelopeAmplitude.toFixed(3).replace('.', ','), unit: 'm' },
+                  { label: 'Dist. ao Nó Próximo', value: probeResult.distanceToNearestNode.toFixed(3).replace('.', ','), unit: 'm' },
+                  { label: 'Dist. ao Ventre Próximo', value: probeResult.distanceToNearestAntinode.toFixed(3).replace('.', ','), unit: 'm' },
+                ],
+                status: probeResult.isNode
+                  ? '🔴 PONTO NODAL (Nó: Deslocamento Nulo)'
+                  : probeResult.isAntinode
+                  ? '🔵 VENTRE DE RESSONÂNCIA (Amplitude Máxima)'
+                  : 'Ponto em Oscilação Intermediária',
+              }}
+              standingWaveSpacing={{
+                wavelength: waveInfo.wavelength,
+                nodeToNodeDist: spacingData.nodeToNodeDistance,
+                antinodeToAntinodeDist: spacingData.antinodeToAntinodeDistance,
+                nodeToAntinodeDist: spacingData.nodeToAntinodeDistance,
+                activeHarmonic: waveInfo.harmonicNumber,
+                nodePositions: spacingData.nodePositions,
+                antinodePositions: spacingData.antinodePositions,
+              }}
+              showHarmonicMarkers={showHarmonicMarkers}
+              onToggleHarmonicMarkers={() => setShowHarmonicMarkers((prev) => !prev)}
+            />
+
+            {/* Slider da coordenada da sonda quando ativa */}
+            {isProbeActive && (
+              <div className="bg-slate-900/95 border border-purple-800/80 p-2.5 rounded-xl shadow-xl flex flex-col gap-1 w-64">
+                <div className="flex items-center justify-between text-xs text-purple-300">
+                  <span className="font-semibold">Posição da Sonda (x):</span>
+                  <span className="font-mono">{probeX.toFixed(2)} m</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max={length}
+                  step="0.02"
+                  value={probeX}
+                  onChange={(e) => setProbeX(parseFloat(e.target.value))}
+                  className="w-full accent-purple-500 h-1 bg-slate-800 rounded cursor-pointer"
+                />
+              </div>
+            )}
+          </div>
 
           {/* Instantaneous Values */}
           <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2 overflow-x-auto z-10 pointer-events-none">

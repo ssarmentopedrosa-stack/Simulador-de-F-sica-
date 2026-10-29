@@ -80,10 +80,47 @@ export const GUIDED_EXPERIMENTS: GuidedExperiment[] = [
     title: 'Formação de Nós, Ventres e Ressonância de Harmônicos',
     objective: 'Identificar a formação de harmônicos em cordas de violão e tubos sonoros.',
     suggestedParams: {
-      n: 1,
+      harmonic: 3,
       length: 2.0,
       waveSpeed: 40,
+      boundary: 'both_fixed',
     },
+    predictionQuestion: {
+      question: 'Quantos nós e ventres surgirão em uma corda com as duas pontas fixas ao ser excitada no 3º harmônico (n = 3)?',
+      options: [
+        {
+          id: 'opt_sw_1',
+          text: '3 nós e 3 ventres',
+          isCorrect: false,
+          explanation: 'Incorreto. Em uma corda presa nas duas extremidades, as extremidades contam como nós fixos obrigatórios, resultando em n + 1 nós.',
+        },
+        {
+          id: 'opt_sw_2',
+          text: '4 nós e 3 ventres',
+          isCorrect: true,
+          explanation: 'Correto! Em uma corda com extremidades fixas, o número de ventres é igual a n (3 ventres) e o número de nós é n + 1 (4 nós, incluindo as duas pontas fixas).',
+        },
+        {
+          id: 'opt_sw_3',
+          text: '2 nós e 3 ventres',
+          isCorrect: false,
+          explanation: 'Incorreto. 2 nós é a condição do primeiro harmônico fundamental (n = 1).',
+        },
+        {
+          id: 'opt_sw_4',
+          text: '4 nós e 4 ventres',
+          isCorrect: false,
+          explanation: 'Incorreto. O número de ventres de oscilação máxima em corda com ambas extremidades fixas é exatamente n.',
+        },
+      ],
+    },
+    checkpoints: [
+      { id: 'cp_sw_1', text: 'Configurar a corda com extremidades fixas e harmônico n = 1 (modo fundamental)' },
+      { id: 'cp_sw_2', text: 'Aumentar para o 3º harmônico (n = 3) e pausar a simulação no ponto de crista máxima' },
+      { id: 'cp_sw_3', text: 'Identificar visualmente os 4 nós estacionários e os 3 ventres de oscilação' },
+      { id: 'cp_sw_4', text: 'Calcular o comprimento de onda λ₃ = 2L/3 e comparar com o mostrador telemétrico' },
+      { id: 'cp_sw_5', text: 'Exportar os dados gravados em CSV com separador ; e vírgula decimal' },
+    ],
     steps: {
       prediction: 'Quantos nós (pontos de deslocamento permanentemente nulo) surgirão em uma corda de extremidades presas quando excitada no 3º harmônico?',
       experimentation: 'Selecione o 1º harmônico (fundamental) e observe 2 nós nas extremidades e 1 ventre central. Mude para n = 3 e conte os nós e ventres.',
@@ -98,10 +135,45 @@ export const GUIDED_EXPERIMENTS: GuidedExperiment[] = [
     title: 'Efeito Doppler e a Compressão Espacial das Frentes de Onda',
     objective: 'Demonstrar visual e matematicamente por que a sirene de uma ambulância parece mais aguda ao se aproximar e mais grave ao se afastar.',
     suggestedParams: {
-      sourceSpeed: 30,
+      sourceSpeed: 35,
       sourceFreq: 440,
       observerSpeed: 0,
     },
+    predictionQuestion: {
+      question: 'Quando uma fonte sonora se desloca no ar em direção a um observador parado, o que acontece com a velocidade do som no ar e com a frequência percebida?',
+      options: [
+        {
+          id: 'opt_dop_1',
+          text: 'A velocidade do som aumenta e a frequência percebida aumenta',
+          isCorrect: false,
+          explanation: 'Incorreto. A velocidade do som no ar depende apenas das propriedades termodinâmicas do meio (v ≈ 340 m/s), permanecendo invariante mesmo com a fonte em alta velocidade.',
+        },
+        {
+          id: 'opt_dop_2',
+          text: 'A velocidade do som permanece constante e a frequência percebida aumenta',
+          isCorrect: true,
+          explanation: 'Exato! A velocidade de propagação no meio independe da velocidade da fonte. Ocorre uma compressão espacial das frentes de onda à frente da fonte (λ diminui), fazendo o observador receber mais cristas por segundo.',
+        },
+        {
+          id: 'opt_dop_3',
+          text: 'A velocidade do som diminui e a frequência percebida diminui',
+          isCorrect: false,
+          explanation: 'Incorreto. A velocidade no meio não se altera e a frequência percebida na aproximação é maior (som mais agudo).',
+        },
+        {
+          id: 'opt_dop_4',
+          text: 'Nem a velocidade nem a frequência sofrem qualquer alteração',
+          isCorrect: false,
+          explanation: 'Incorreto. O desvio de frequência do Efeito Doppler é perceptível e decorre do encurtamento do comprimento de onda à frente da fonte.',
+        },
+      ],
+    },
+    checkpoints: [
+      { id: 'cp_dop_1', text: 'Definir velocidade da fonte em v = 35 m/s em direção ao observador em repouso' },
+      { id: 'cp_dop_2', text: 'Observar a compressão das frentes de onda circulares à frente do emissor' },
+      { id: 'cp_dop_3', text: 'Registrar a frequência percebida mais alta (+40 Hz) durante a fase de aproximação' },
+      { id: 'cp_dop_4', text: 'Observar a transição de tom para mais grave logo após a fonte ultrapassar o observador' },
+    ],
     steps: {
       prediction: 'Quando uma fonte sonora se desloca no ar em direção a um observador parado, a velocidade do som no ar aumenta?',
       experimentation: 'Inicie a simulação com velocidade da fonte v_f = 40 m/s. Observe as frentes de onda circulares concêntricas descentralizadas.',
@@ -122,6 +194,41 @@ export const GUIDED_EXPERIMENTS: GuidedExperiment[] = [
       frictionCoeff: 0.2,
       mass: 5,
     },
+    predictionQuestion: {
+      question: 'Se uma força constante de 60 N for aplicada perpendicularmente ao deslocamento horizontal de um bloco (θ = 90°), qual será o trabalho mecânico realizado por ela?',
+      options: [
+        {
+          id: 'opt_wp_1',
+          text: '600 Joules, pois a força continua puxando o corpo',
+          isCorrect: false,
+          explanation: 'Incorreto. O trabalho mecânico depende do produto escalar entre a força e o vetor deslocamento (W = F · d · cos θ).',
+        },
+        {
+          id: 'opt_wp_2',
+          text: '0 Joules, pois cos(90°) = 0 e a força não possui projeção no deslocamento',
+          isCorrect: true,
+          explanation: 'Exato! Pela definição W = F · d · cos(θ), quando a força é perpendicular ao deslocamento (θ = 90°), cos(90°) = 0, logo o trabalho mecânico realizado é rigorosamente nulo.',
+        },
+        {
+          id: 'opt_wp_3',
+          text: '300 Joules, proporcional à metade da intensidade da força',
+          isCorrect: false,
+          explanation: 'Incorreto. A 90° o cosseno se anula estritamente, resultando em W = 0 J.',
+        },
+        {
+          id: 'opt_wp_4',
+          text: '-60 Joules, atuando como força resistente oposta',
+          isCorrect: false,
+          explanation: 'Incorreto. A força perpendicular não se opõe ao deslocamento horizontal do bloco.',
+        },
+      ],
+    },
+    checkpoints: [
+      { id: 'cp_wp_1', text: 'Aplicar força F = 60 N horizontalmente (θ = 0°) e anotar o trabalho máximo no mostrador' },
+      { id: 'cp_wp_2', text: 'Inclinar o dinamômetro para θ = 30° e verificar o alívio da força normal N = mg - F·sen(θ)' },
+      { id: 'cp_wp_3', text: 'Ajustar o ângulo para θ = 90° e confirmar no velocímetro que W = 0 J' },
+      { id: 'cp_wp_4', text: 'Verificar no gráfico F × d que a área sob a curva coincide rigorosamente com ΔEc' },
+    ],
     steps: {
       prediction: 'Se aplicarmos uma força de 60 N perpendicularmente ao deslocamento (θ = 90°), qual será o trabalho mecânico realizado pela força? Ela alterará a velocidade horizontal do bloco?',
       experimentation: 'Configure a força em 60 N e varie o ângulo de 0° até 90°. Observe no dinamômetro vetorial 3D a projeção horizontal F·cos(θ) e a componente vertical F·sen(θ) que reduz a força normal N.',
@@ -347,6 +454,41 @@ export const GUIDED_EXPERIMENTS: GuidedExperiment[] = [
       distance: 0.5,
       dielectric: 1.0,
     },
+    predictionQuestion: {
+      question: 'Se a distância r entre duas esferas carregadas for duplicada de 0,5 m para 1,0 m, qual fração da força eletrostática original restará?',
+      options: [
+        {
+          id: 'opt_cou_1',
+          text: '1/4 da força original (cai 4 vezes)',
+          isCorrect: true,
+          explanation: 'Correto! A Lei de Coulomb obedece estritamente ao inverso do quadrado da distância: F ∝ 1/r². Dobrar a distância (2r) multiplica o denominador por 2² = 4, reduzindo a força a 1/4.',
+        },
+        {
+          id: 'opt_cou_2',
+          text: 'Metade (1/2) da força original',
+          isCorrect: false,
+          explanation: 'Incorreto. A dependência não é linear (1/r), mas quadrática com o inverso da separação geométrica (1/r²).',
+        },
+        {
+          id: 'opt_cou_3',
+          text: '1/8 da força original',
+          isCorrect: false,
+          explanation: 'Incorreto. A força dependeria de 1/8 apenas se fosse cúbica inversa (1/r³), o que não ocorre na eletrostática pontual.',
+        },
+        {
+          id: 'opt_cou_4',
+          text: 'A força não se altera porque o módulo das cargas não mudou',
+          isCorrect: false,
+          explanation: 'Incorreto. A distância é o termo dominante na atenuação das linhas de campo.',
+        },
+      ],
+    },
+    checkpoints: [
+      { id: 'cp_cou_1', text: 'Configurar q₁ = +10 μC e q₂ = -10 μC a uma distância inicial r = 0,5 m' },
+      { id: 'cp_cou_2', text: 'Registrar a força de atração nos dinamômetros digitais (F ≈ 3,60 N)' },
+      { id: 'cp_cou_3', text: 'Afastar o suporte para r = 1,0 m e confirmar a queda exata para 1/4 (F ≈ 0,90 N)' },
+      { id: 'cp_cou_4', text: 'Verificar que os vetores de ação e reação são opostos e de módulo idêntico' },
+    ],
     steps: {
       prediction: 'Se duplicarmos a distância entre duas esferas carregadas de 0,5 m para 1,0 m, o que ocorrerá com o módulo da força elétrica medida pelo dinamômetro de torção?',
       experimentation: 'Configure q1 = +10 μC e q2 = -10 μC a uma distância inicial r = 0,5 m. Observe a leitura digital da força F12 e F21. Em seguida, deslize o suporte de q2 até r = 1,0 m.',
@@ -399,9 +541,44 @@ export const GUIDED_EXPERIMENTS: GuidedExperiment[] = [
     suggestedParams: {
       area: 0.05,
       distance: 0.005,
-      voltage: 100,
-      dielectric: 5.0,
+      voltage: 50,
+      dielectric: 'glass',
     },
+    predictionQuestion: {
+      question: 'Mantendo o capacitor conectado a uma fonte de tensão constante (V = 50 V), o que acontece com a capacitância e com a carga acumulada ao introduzirmos um dielétrico de vidro (κ = 5)?',
+      options: [
+        {
+          id: 'opt_cap_1',
+          text: 'A capacitância e a carga armazenada aumentam 5 vezes',
+          isCorrect: true,
+          explanation: 'Perfeito! A capacitância é multiplicada pelo fator dielétrico: C = κ · C₀ (5 vezes maior). Como a fonte mantém a tensão fixa em V, a carga acumulada Q = C · V também quintuplica.',
+        },
+        {
+          id: 'opt_cap_2',
+          text: 'A capacitância quintuplica, mas a carga diminui para manter o balanço',
+          isCorrect: false,
+          explanation: 'Incorreto. A fonte de tensão constante injeta mais carga nas placas para compensar a atenuação do campo provocada pela polarização do dielétrico.',
+        },
+        {
+          id: 'opt_cap_3',
+          text: 'A capacitância cai para 1/5 do valor no vácuo',
+          isCorrect: false,
+          explanation: 'Incorreto. Qualquer dielétrico material possui constante dielétrica κ > 1, aumentando a capacitância em relação ao vácuo.',
+        },
+        {
+          id: 'opt_cap_4',
+          text: 'Nenhuma grandeza se altera porque a área geométrica das placas é fixa',
+          isCorrect: false,
+          explanation: 'Incorreto. A constante dielétrica κ altera a permissividade efetiva do meio ε = κ · ε₀.',
+        },
+      ],
+    },
+    checkpoints: [
+      { id: 'cp_cap_1', text: 'Ajustar as placas no vácuo (κ = 1,0) com d = 5 mm e V = 50 V e registrar C₀' },
+      { id: 'cp_cap_2', text: 'Deslizar o bloco de dielétrico de vidro (κ = 5,0) entre as armaduras metálicas' },
+      { id: 'cp_cap_3', text: 'Observar os dipolos moleculares alinhados no material e a quintuplicação de C e Q' },
+      { id: 'cp_cap_4', text: 'Exportar os dados registrados em CSV (delimitador ; e vírgula decimal) para análise' },
+    ],
     steps: {
       prediction: 'Mantendo o capacitor conectado a uma fonte de tensão constante V = 100 V, o que acontece com a carga Q e a energia armazenada U quando inserimos um dielétrico com κ = 5?',
       experimentation: 'No capacitor 3D, ajuste d = 5 mm, A = 0,05 m² e V = 100 V no vácuo (κ = 1). Observe C0, Q0 e U0. Em seguida, deslize o bloco de dielétrico de mica (κ = 5,0) para o interior das armaduras.',

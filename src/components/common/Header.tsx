@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ModuleId } from '../../types/physics';
 import { MODULES } from '../../data/modules';
-import { Presentation, Award, CheckCircle2, ChevronDown, Link2, Check } from 'lucide-react';
+import { Presentation, Award, CheckCircle2, ChevronDown, Link2, Check, HelpCircle } from 'lucide-react';
 import { copyShareableSimulationLink } from '../../physics/urlState';
 
 interface HeaderProps {
@@ -11,6 +11,7 @@ interface HeaderProps {
   onOpenTeacherMode: () => void;
   onOpenEnemBank: () => void;
   onOpenTestRunner: () => void;
+  onOpenTour?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,8 +21,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTeacherMode,
   onOpenEnemBank,
   onOpenTestRunner,
+  onOpenTour,
 }) => {
-  const [headerCopied, setHeaderCopied] = React.useState(false);
+  const [headerCopied, setHeaderCopied] = useState(false);
 
   const handleCopySimulationLink = async () => {
     if (currentModuleId === 'home') return;
@@ -38,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-3 shrink-0">
         <button
           onClick={() => onSelectModule('home')}
+          aria-label="Ir para a página inicial do Ondas Lab 3D"
           className="text-left group cursor-pointer focus:outline-none"
         >
           <div className="flex items-center gap-2">
@@ -209,6 +212,7 @@ export const Header: React.FC<HeaderProps> = ({
         <select
           value={currentModuleId}
           onChange={(e) => onSelectModule(e.target.value as ModuleId | 'home')}
+          aria-label="Selecionar módulo ou laboratório de Física"
           className="bg-slate-900 border border-slate-800 text-xs text-cyan-400 rounded px-2 py-1 max-w-[130px] sm:max-w-[170px] truncate focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
         >
           <option value="home">Visão Geral</option>
@@ -251,11 +255,12 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
 
-      {/* Zone 3: Actions (Teacher Mode, ENEM, Tests, Share Link) */}
+      {/* Zone 3: Actions (Teacher Mode, ENEM, Tests, Share Link, Tour Help) */}
       <div className="flex items-center gap-2 shrink-0">
         {currentModuleId !== 'home' && (
           <button
             onClick={handleCopySimulationLink}
+            aria-label="Copiar link compartilhável da simulação com os parâmetros atuais dos sliders"
             className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold border transition-all whitespace-nowrap cursor-pointer ${
               headerCopied
                 ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-sm'
@@ -280,6 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onOpenEnemBank}
+          aria-label="Abrir banco de questões ENEM (Atalho: E)"
           className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-900/50 transition-colors whitespace-nowrap cursor-pointer"
           title="Banco de Questões ENEM (Atalho: E)"
         >
@@ -290,6 +296,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onOpenTestRunner}
+          aria-label="Abrir suíte de testes de invariantes físicas e modelos matemáticos (Atalho: T)"
           className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/50 transition-colors whitespace-nowrap cursor-pointer"
           title="Verificação de Modelos Matemáticos e Invariantes Físicas (Atalho: T)"
         >
@@ -300,6 +307,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onOpenTeacherMode}
+          aria-label="Abrir modo de apresentação para sala de aula e projetores (Atalho: P)"
           className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-sm transition-all whitespace-nowrap cursor-pointer"
           title="Modo Apresentação para Sala de Aula e Projetores (Atalho: P)"
         >
@@ -308,6 +316,17 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="sm:hidden">Professor</span>
           <kbd className="hidden md:inline text-[9px] bg-blue-950/80 px-1 rounded text-blue-200 border border-blue-400/40">P</kbd>
         </button>
+
+        {onOpenTour && (
+          <button
+            onClick={onOpenTour}
+            aria-label="Abrir guia rápido da plataforma e atalhos de teclado (Atalho: ?)"
+            className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-md text-xs font-bold bg-slate-900 hover:bg-slate-800 text-purple-400 hover:text-purple-300 border border-purple-900/50 hover:border-purple-500/80 transition-colors cursor-pointer"
+            title="Guia Rápido e Atalhos de Teclado (Atalho: ?)"
+          >
+            <HelpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+        )}
       </div>
     </header>
   );

@@ -122,12 +122,30 @@ export interface GravityPreset {
   description: string;
 }
 
-export interface ExperimentStep {
-  step: 1 | 2 | 3 | 4;
+export interface PredictionOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+  explanation: string;
+}
+
+export interface PredictionQuestion {
+  question: string;
+  options: PredictionOption[];
+}
+
+export interface ExperimentCheckpoint {
+  id: string;
+  text: string;
+  tip?: string;
+}
+
+export interface ExperimentStepItem {
+  id: string;
+  num: number;
   title: string;
-  description: string;
-  userPrompt: string;
-  defaultAnswer?: string;
+  subtitle: string;
+  instructions: string[];
 }
 
 export interface GuidedExperiment {
@@ -136,6 +154,9 @@ export interface GuidedExperiment {
   title: string;
   objective: string;
   suggestedParams: Record<string, number | string>;
+  predictionQuestion?: PredictionQuestion;
+  checkpoints?: (string | ExperimentCheckpoint)[];
+  stepList?: ExperimentStepItem[];
   steps: {
     prediction: string;
     experimentation: string;

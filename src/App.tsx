@@ -31,9 +31,11 @@ import { ExperimentModal } from './components/modals/ExperimentModal';
 import { EnemBankModal } from './components/modals/EnemBankModal';
 import { TestRunnerModal } from './components/modals/TestRunnerModal';
 import { TeacherModeModal } from './components/modals/TeacherModeModal';
+import { TourModal } from './components/modals/TourModal';
 
 
 import { parseLabUrlState, serializeLabUrlState } from './physics/urlState';
+import { labAudio } from './components/common/AudioController';
 
 function resolveInitialState(): { moduleId: ModuleId | 'home'; params: Record<string, any> } {
   try {
@@ -80,6 +82,21 @@ export default function App() {
   const [isEnemBankOpen, setIsEnemBankOpen] = useState<boolean>(false);
   const [isTestRunnerOpen, setIsTestRunnerOpen] = useState<boolean>(false);
   const [isTeacherModeOpen, setIsTeacherModeOpen] = useState<boolean>(false);
+  const [isTourOpen, setIsTourOpen] = useState<boolean>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem('ondas_lab_tour_completed') !== 'true';
+      }
+    } catch {
+      // Ignored
+    }
+    return false;
+  });
+
+  // Parar áudio imediatamente ao trocar de laboratório
+  useEffect(() => {
+    labAudio.silenceAll();
+  }, [currentModuleId]);
 
   // Synchronized parameter changes with URL hash
   const handleParamsChange = useCallback(
@@ -170,8 +187,11 @@ export default function App() {
   // Accessible global keyboard shortcut listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when user is typing in an input field or textarea
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+      // Ignore when user is typing in an input field, textarea, or editable element
+      if (
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) ||
+        (e.target as HTMLElement).isContentEditable
+      ) {
         return;
       }
 
@@ -183,11 +203,26 @@ export default function App() {
         else if (isEnemBankOpen) setIsEnemBankOpen(false);
         else if (isTestRunnerOpen) setIsTestRunnerOpen(false);
         else if (isTeacherModeOpen) setIsTeacherModeOpen(false);
+        else if (isTourOpen) setIsTourOpen(false);
         return;
       }
 
+      // 'F' toggles Fullscreen mode
+      if (key === 'f') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      // '?' toggles Onboarding Tour & Keyboard shortcuts reference
+      else if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+        e.preventDefault();
+        setIsTourOpen((prev) => !prev);
+      }
       // 'P' toggles Teacher Presentation Mode
-      if (key === 'p') {
+      else if (key === 'p') {
         setIsTeacherModeOpen((prev) => !prev);
       }
       // 'E' toggles ENEM Question Bank
@@ -202,7 +237,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeExperiment, isEnemBankOpen, isTestRunnerOpen, isTeacherModeOpen]);
+  }, [activeExperiment, isEnemBankOpen, isTestRunnerOpen, isTeacherModeOpen, isTourOpen]);
 
   return (
     <div className="w-screen h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none">
@@ -214,6 +249,7 @@ export default function App() {
         onOpenTeacherMode={() => setIsTeacherModeOpen(true)}
         onOpenEnemBank={() => setIsEnemBankOpen(true)}
         onOpenTestRunner={() => setIsTestRunnerOpen(true)}
+        onOpenTour={() => setIsTourOpen(true)}
       />
 
       {/* Main Simulation Viewport or Home Portal */}
@@ -427,6 +463,14 @@ export default function App() {
         <ExperimentModal
           experiment={activeExperiment}
           onClose={() => setActiveExperiment(null)}
+          onApplyParams={(params) => {
+            setCurrentParams(params);
+            if (currentModuleId !== 'home') {
+              const hashStr = serializeLabUrlState(currentModuleId, params);
+              const finalHash = hashStr.startsWith('#') ? hashStr : `#${hashStr}`;
+              window.history.replaceState(null, '', finalHash);
+            }
+          }}
         />
       )}
 
@@ -453,6 +497,12 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Onboarding Platform Guide & Shortcuts Tour Modal */}
+      <TourModal
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+      />
     </div>
   );
 }

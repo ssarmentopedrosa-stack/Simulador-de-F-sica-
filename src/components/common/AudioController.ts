@@ -9,7 +9,7 @@ class AudioController {
   private osc1: OscillatorNode | null = null;
   private osc2: OscillatorNode | null = null;
   private isEnabled: boolean = false;
-  private volume: number = 0.2;
+  private volume: number = 0.08;
 
   public init() {
     if (this.ctx) return;
@@ -120,6 +120,21 @@ class AudioController {
         // Ignored
       }
       this.osc2 = null;
+    }
+  }
+
+  /**
+   * Silencia e encerra imediatamente qualquer oscilador ao alternar de laboratório ou desmontar.
+   */
+  public silenceAll() {
+    this.isEnabled = false;
+    this.stop();
+    if (this.ctx && this.ctx.state === 'running') {
+      try {
+        this.ctx.suspend().catch(() => {});
+      } catch {
+        // Ignored
+      }
     }
   }
 }
